@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/httpx"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
@@ -96,11 +97,17 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.usecase.Update(r.Context(), r.PathValue("id"), cfg)
+	id := r.PathValue("id")
+
+	updated, err := h.usecase.Update(r.Context(), id, cfg)
 	if err != nil {
 		h.writeError(w, err)
 
 		return
+	}
+
+	if updated.ID != id {
+		w.Header().Set("Location", "/api/v1/load-configs/"+url.PathEscape(updated.ID))
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, updated)
@@ -115,6 +122,81 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Derive handles POST /api/v1/load-configs/derive.
+func (h *Handler) Derive(w http.ResponseWriter, r *http.Request) {
+	var identity model.Identity
+	if !decodeJSON(w, r, &identity) {
+		return
+	}
+
+	derived, err := h.usecase.Derive(r.Context(), identity)
+	if err != nil {
+		h.writeError(w, err)
+
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, derived)
+}
+
+// ListOrganizations handles GET /api/v1/organizations.
+func (h *Handler) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+	kind := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	if !model.ValidPartner(kind) {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "type must be advertiser or publisher", nil)
+
+		return
+	}
+
+	items, err := h.usecase.ListOrganizations(r.Context(), kind)
+	if err != nil {
+		h.writeError(w, err)
+
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, refsOrEmpty(items))
+}
+
+// ListAccounts handles GET /api/v1/organizations/{id}/accounts.
+func (h *Handler) ListAccounts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.usecase.ListAccounts(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeError(w, err)
+
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, refsOrEmpty(items))
+}
+
+// ListBases handles GET /api/v1/organizations/{slug}/bases.
+func (h *Handler) ListBases(w http.ResponseWriter, r *http.Request) {
+	kind := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	if kind != model.PartnerPublisher {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "type must be publisher", nil)
+
+		return
+	}
+
+	items, err := h.usecase.ListBases(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		h.writeError(w, err)
+
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, refsOrEmpty(items))
+}
+
+func refsOrEmpty(items []model.NamedRef) []model.NamedRef {
+	if items == nil {
+		return []model.NamedRef{}
+	}
+
+	return items
 }
 
 // Validate handles POST /api/v1/load-configs/validate.
@@ -165,7 +247,12 @@ func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	var validation *model.ValidationError
 	switch {
 	case errors.As(err, &validation):
-		httpx.WriteError(w, http.StatusUnprocessableEntity, "validation_error", "validation failed", validation.Issues)
+		message := "validation failed"
+		if len(validation.Issues) == 1 && validation.Issues[0].Message != "" {
+			message = validation.Issues[0].Message
+		}
+
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "validation_error", message, validation.Issues)
 	case errors.Is(err, model.ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "load config not found", nil)
 	case errors.Is(err, model.ErrConflict):

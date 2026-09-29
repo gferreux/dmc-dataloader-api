@@ -22,8 +22,10 @@ const (
 var errPatternTooLong = errors.New("pattern is too long")
 
 type usecase struct {
-	repo   port.LoadConfigRepository
-	logger *slog.Logger
+	repo      port.LoadConfigRepository
+	directory port.OrganizationDirectory
+	settings  model.DeriveConfig
+	logger    *slog.Logger
 }
 
 // ProvideLogger is the process logger used for audit lines.
@@ -31,13 +33,23 @@ func ProvideLogger() *slog.Logger {
 	return slog.Default()
 }
 
+// ProvideSettings selects the plumbing used to derive a load_config.
+func ProvideSettings(cfg model.AppConfig) model.DeriveConfig {
+	return cfg.Derive
+}
+
 // NewUsecase builds the load_config usecase.
-func NewUsecase(repo port.LoadConfigRepository, logger *slog.Logger) port.LoadConfigUsecase {
+func NewUsecase(
+	repo port.LoadConfigRepository,
+	directory port.OrganizationDirectory,
+	settings model.DeriveConfig,
+	logger *slog.Logger,
+) port.LoadConfigUsecase {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &usecase{repo: repo, logger: logger}
+	return &usecase{repo: repo, directory: directory, settings: settings, logger: logger}
 }
 
 func (u *usecase) List(ctx context.Context, filter model.ListFilter) ([]model.LoadConfig, error) {
@@ -84,11 +96,21 @@ func (u *usecase) Get(ctx context.Context, id string) (model.LoadConfig, error) 
 
 func (u *usecase) Create(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error) {
 	cfg = model.Normalize(cfg)
-	if err := u.rejectInvalid(cfg); err != nil {
+
+	derived, _, err := u.materialize(ctx, cfg.Identity)
+	if err != nil {
 		return model.LoadConfig{}, err
 	}
 
-	created, err := u.repo.Create(ctx, cfg)
+	derived.Mode = cfg.Mode
+	derived.BQParams = cfg.BQParams
+
+	derived.Mappings = cfg.Mappings
+	if err = u.rejectInvalid(derived); err != nil {
+		return model.LoadConfig{}, err
+	}
+
+	created, err := u.repo.Create(ctx, derived)
 	if err != nil {
 		return model.LoadConfig{}, err
 	}
@@ -100,25 +122,22 @@ func (u *usecase) Create(ctx context.Context, cfg model.LoadConfig) (model.LoadC
 
 func (u *usecase) Update(ctx context.Context, id string, cfg model.LoadConfig) (model.LoadConfig, error) {
 	cfg = model.Normalize(cfg)
-	if cfg.ID == "" {
-		cfg.ID = id
-	}
 
-	if cfg.ID != id {
-		report := model.EmptyReport()
-		report.Errors = append(report.Errors, model.FieldIssue{
-			Field:   "id",
-			Message: "id must match the document id in the path",
-		})
-
-		return model.LoadConfig{}, &model.ValidationError{Issues: report.Errors}
-	}
-
-	if err := u.rejectInvalid(cfg); err != nil {
+	existing, err := u.repo.Get(ctx, id)
+	if err != nil {
 		return model.LoadConfig{}, err
 	}
 
-	updated, err := u.repo.Update(ctx, cfg)
+	merged, err := u.mergeUpdate(ctx, id, existing, cfg)
+	if err != nil {
+		return model.LoadConfig{}, err
+	}
+
+	if err = u.rejectInvalid(merged); err != nil {
+		return model.LoadConfig{}, err
+	}
+
+	updated, err := u.repo.Move(ctx, id, merged)
 	if err != nil {
 		return model.LoadConfig{}, err
 	}
@@ -236,6 +255,10 @@ func matchesQuery(cfg model.LoadConfig, query string) bool {
 		cfg.Destination.TableID,
 		cfg.Patterns.Preprocess,
 		cfg.Patterns.Ingest,
+		cfg.Kind,
+		cfg.OrganizationName,
+		cfg.NestedName,
+		cfg.FileType,
 		cfg.Organization.ID,
 		string(cfg.Organization.Type),
 	}

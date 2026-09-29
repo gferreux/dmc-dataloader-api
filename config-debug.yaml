@@ -15,6 +15,35 @@ firestore:
   database_id: dmc-data-loader-dev
   collection: load_config
 
+organizations:
+  project_id: dmc-datastores-dev-becb
+  database_id: "(default)"
+  collection: organizations
+  accounts_collection: accounts
+
+derive:
+  advertiser:
+    raw_bucket: dkp-dmc-advertisers-raw-euw1-dev
+    staging_bucket: dkp-dmc-advertisers-staging-euw1-dev
+    notification:
+      project_id: dmc-curated-inventory-dev-e6da
+      topic_id: dkp-dmc-data-loader-notifications-dev
+    destination:
+      project_id: dmc-raw-advertisers-dev-27c7
+      dataset_id: dkp_dmc_advertisers_raw_eu_dev
+  publisher:
+    raw_bucket: dkp-dmc-publishers-raw-euw1-dev
+    staging_bucket: dkp-dmc-publishers-staging-euw1-dev
+    notification:
+      project_id: dmc-curated-inventory-dev-e6da
+      topic_id: dkp-dmc-data-loader-notifications-dev
+    destination:
+      project_id: dmc-raw-publishers-dev-c69c
+      dataset_id: dkp_dmc_publishers_raw_eu_dev
+      tables:
+        optin: profiles
+        optout: optout
+
 auth:
   mode: none
   iap_audience: ""

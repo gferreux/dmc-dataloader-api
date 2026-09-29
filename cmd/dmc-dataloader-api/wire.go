@@ -22,8 +22,11 @@ func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, fu
 	wire.Build(
 		firestoreadapter.NewRepository,
 		wire.Bind(new(port.LoadConfigRepository), new(*firestoreadapter.Repository)),
+		firestoreadapter.NewDirectory,
+		wire.Bind(new(port.OrganizationDirectory), new(*firestoreadapter.Directory)),
 		auth.NewAuthenticator,
 		loadconfig.ProvideLogger,
+		loadconfig.ProvideSettings,
 		loadconfig.NewUsecase,
 		loadconfighandler.NewHandler,
 		app.New,

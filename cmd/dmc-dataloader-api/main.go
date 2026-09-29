@@ -63,11 +63,20 @@ func run() error {
 		"collection", appConfig.Firestore.Collection,
 		"auth", appConfig.Auth.Mode,
 	)
+	slog.Info("Organization source",
+		"project", appConfig.Organizations.ProjectID,
+		"database", appConfig.Organizations.DatabaseID,
+		"organizations", appConfig.Organizations.Collection,
+		"accounts", appConfig.Organizations.AccountsCollection,
+	)
 
 	return application.Run(context.Background())
 }
 
 func setDefaults(viperConfig *viper.Viper) {
+	derive := model.DevDeriveConfig()
+	orgs := model.DevOrganizationSource()
+
 	viperConfig.SetDefault("log.level", "info")
 	viperConfig.SetDefault("log.json", true)
 	viperConfig.SetDefault("server.addr", ":3000")
@@ -78,8 +87,27 @@ func setDefaults(viperConfig *viper.Viper) {
 	viperConfig.SetDefault("firestore.project_id", "dmc-datastores-dev-becb")
 	viperConfig.SetDefault("firestore.database_id", "dmc-data-loader-dev")
 	viperConfig.SetDefault("firestore.collection", "load_config")
+	viperConfig.SetDefault("organizations.project_id", orgs.ProjectID)
+	viperConfig.SetDefault("organizations.database_id", orgs.DatabaseID)
+	viperConfig.SetDefault("organizations.collection", orgs.Collection)
+	viperConfig.SetDefault("organizations.accounts_collection", orgs.AccountsCollection)
+	setDeriveDefaults(viperConfig, "derive.advertiser", derive.Advertiser)
+	setDeriveDefaults(viperConfig, "derive.publisher", derive.Publisher)
 	viperConfig.SetDefault("auth.mode", "none")
 	viperConfig.SetDefault("auth.iap_audience", "")
+}
+
+func setDeriveDefaults(viperConfig *viper.Viper, prefix string, partner model.PartnerDeriveConfig) {
+	viperConfig.SetDefault(prefix+".raw_bucket", partner.RawBucket)
+	viperConfig.SetDefault(prefix+".staging_bucket", partner.StagingBucket)
+	viperConfig.SetDefault(prefix+".notification.project_id", partner.Notification.ProjectID)
+	viperConfig.SetDefault(prefix+".notification.topic_id", partner.Notification.TopicID)
+	viperConfig.SetDefault(prefix+".destination.project_id", partner.Destination.ProjectID)
+	viperConfig.SetDefault(prefix+".destination.dataset_id", partner.Destination.DatasetID)
+
+	for fileType, table := range partner.Destination.Tables {
+		viperConfig.SetDefault(prefix+".destination.tables."+fileType, table)
+	}
 }
 
 func loadConfig(path string) (model.AppConfig, error) {
@@ -90,20 +118,7 @@ func loadConfig(path string) (model.AppConfig, error) {
 	viperConfig.AutomaticEnv()
 	setDefaults(viperConfig)
 
-	for _, key := range []string{
-		"log.level",
-		"log.json",
-		"server.addr",
-		"server.read_timeout",
-		"server.write_timeout",
-		"server.shutdown_timeout",
-		"server.cors_origins",
-		"firestore.project_id",
-		"firestore.database_id",
-		"firestore.collection",
-		"auth.mode",
-		"auth.iap_audience",
-	} {
+	for _, key := range configEnvKeys() {
 		if err := viperConfig.BindEnv(key); err != nil {
 			return model.AppConfig{}, fmt.Errorf("binding env %s: %w", key, err)
 		}
@@ -121,6 +136,8 @@ func loadConfig(path string) (model.AppConfig, error) {
 		return model.AppConfig{}, fmt.Errorf("unmarshalling config: %w", err)
 	}
 
+	appConfig.Derive = appConfig.Derive.WithTableDefaults()
+
 	appConfig.AppName = AppName
 	appConfig.AppVersion = AppVersion
 	appConfig.BuildDate = BuildDate
@@ -136,6 +153,41 @@ func loadConfig(path string) (model.AppConfig, error) {
 	}
 
 	return appConfig, nil
+}
+
+func configEnvKeys() []string {
+	return []string{
+		"log.level",
+		"log.json",
+		"server.addr",
+		"server.read_timeout",
+		"server.write_timeout",
+		"server.shutdown_timeout",
+		"server.cors_origins",
+		"firestore.project_id",
+		"firestore.database_id",
+		"firestore.collection",
+		"organizations.project_id",
+		"organizations.database_id",
+		"organizations.collection",
+		"organizations.accounts_collection",
+		"derive.advertiser.raw_bucket",
+		"derive.advertiser.staging_bucket",
+		"derive.advertiser.notification.project_id",
+		"derive.advertiser.notification.topic_id",
+		"derive.advertiser.destination.project_id",
+		"derive.advertiser.destination.dataset_id",
+		"derive.publisher.raw_bucket",
+		"derive.publisher.staging_bucket",
+		"derive.publisher.notification.project_id",
+		"derive.publisher.notification.topic_id",
+		"derive.publisher.destination.project_id",
+		"derive.publisher.destination.dataset_id",
+		"derive.publisher.destination.tables.optin",
+		"derive.publisher.destination.tables.optout",
+		"auth.mode",
+		"auth.iap_audience",
+	}
 }
 
 func setupLogger(cfg model.LogConfig) {

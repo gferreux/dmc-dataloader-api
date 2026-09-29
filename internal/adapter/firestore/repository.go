@@ -86,6 +86,55 @@ func (r *Repository) Create(ctx context.Context, cfg model.LoadConfig) (model.Lo
 	return r.Get(ctx, cfg.ID)
 }
 
+// Move writes cfg at cfg.ID and deletes fromID when the id changed.
+// Unknown fields on the source document are copied onto the destination.
+func (r *Repository) Move(ctx context.Context, fromID string, cfg model.LoadConfig) (model.LoadConfig, error) {
+	if fromID == cfg.ID {
+		return r.Update(ctx, cfg)
+	}
+
+	oldRef := r.client.Collection(r.collection).Doc(fromID)
+	newRef := r.client.Collection(r.collection).Doc(cfg.ID)
+
+	err := r.client.RunTransaction(ctx, func(_ context.Context, tx *gfs.Transaction) error {
+		oldSnap, err := tx.Get(oldRef)
+		if status.Code(err) == codes.NotFound {
+			return model.ErrNotFound
+		}
+
+		if err != nil {
+			return err
+		}
+
+		_, err = tx.Get(newRef)
+		switch {
+		case err == nil:
+			return model.ErrConflict
+		case status.Code(err) != codes.NotFound:
+			return err
+		}
+
+		if err = tx.Set(newRef, mergePreservingUnknown(oldSnap.Data(), documentData(cfg))); err != nil {
+			return err
+		}
+
+		return tx.Delete(oldRef)
+	})
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) || errors.Is(err, model.ErrConflict) {
+			return model.LoadConfig{}, err
+		}
+
+		if status.Code(err) == codes.NotFound {
+			return model.LoadConfig{}, model.ErrNotFound
+		}
+
+		return model.LoadConfig{}, fmt.Errorf("moving load config: %w", err)
+	}
+
+	return r.Get(ctx, cfg.ID)
+}
+
 // Update replaces modeled fields and keeps every document field the struct does not declare.
 // Removed mapping columns are dropped. Unknown fields on a mapping that remains, such as
 // isPartitionKey, are kept.
