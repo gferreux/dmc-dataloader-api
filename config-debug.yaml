@@ -6,4 +6,15 @@ log:
 server:
   addr: :3000
   read_timeout: 5s
+  write_timeout: 15s
   shutdown_timeout: 10s
+  cors_origins: http://localhost:4200
+
+firestore:
+  project_id: dmc-datastores-dev-becb
+  database_id: dmc-data-loader-dev
+  collection: load_config
+
+auth:
+  mode: none
+  iap_audience: ""
