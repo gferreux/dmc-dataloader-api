@@ -18,7 +18,7 @@ import (
 func TestCreateRejectsInvalidAndKeepsDerivedFieldsOutOfStorage(t *testing.T) {
 	t.Parallel()
 
-	uc, repo := newUsecase()
+	uc, repo, _ := newUsecase()
 	ctx := context.Background()
 
 	_, err := uc.Create(ctx, model.LoadConfig{PublisherName: "Acme"})
@@ -36,17 +36,22 @@ func TestCreateRejectsInvalidAndKeepsDerivedFieldsOutOfStorage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, stored.PartnerType)
 	assert.Empty(t, stored.ImportType)
+	assert.Empty(t, stored.Kind)
+	assert.Equal(t, "org-acme", created.Organization.ID)
+	require.NotNil(t, created.Organization.Account)
+	assert.Equal(t, "acc-demo", *created.Organization.Account)
+	assert.NotEqual(t, "demo-project", created.Destination.ProjectID)
 }
 
 func TestValidationWarnings(t *testing.T) {
 	t.Parallel()
 
-	uc, _ := newUsecase()
+	uc, repo, _ := newUsecase()
 	ctx := context.Background()
 
 	first := validSales("acme:demo:sales")
 	first.Patterns.Ingest = `^bucket/acme/sales/.*\.csv$`
-	_, err := uc.Create(ctx, first)
+	_, err := repo.Create(ctx, first)
 	require.NoError(t, err)
 
 	second := validSales("other:demo:sales")
@@ -69,9 +74,9 @@ func TestValidationWarnings(t *testing.T) {
 func TestValidationDoesNotWarnForAnchoredDistinctPatterns(t *testing.T) {
 	t.Parallel()
 
-	uc, _ := newUsecase()
+	uc, repo, _ := newUsecase()
 	ctx := context.Background()
-	_, err := uc.Create(ctx, validSales("acme:demo:sales"))
+	_, err := repo.Create(ctx, validSales("acme:demo:sales"))
 	require.NoError(t, err)
 
 	other := validSales("other:demo:sales")
@@ -85,17 +90,17 @@ func TestValidationDoesNotWarnForAnchoredDistinctPatterns(t *testing.T) {
 func TestListFiltersAndTestPatternOrder(t *testing.T) {
 	t.Parallel()
 
-	uc, _ := newUsecase()
+	uc, repo, _ := newUsecase()
 	ctx := context.Background()
 
 	later := validSales("b:demo:sales")
 	later.Patterns.Ingest = `^bucket/shared/.*\.csv$`
-	_, err := uc.Create(ctx, later)
+	_, err := repo.Create(ctx, later)
 	require.NoError(t, err)
 
 	earlier := validSales("a:demo:sales")
 	earlier.Patterns.Ingest = `^bucket/shared/.*\.csv$`
-	_, err = uc.Create(ctx, earlier)
+	_, err = repo.Create(ctx, earlier)
 	require.NoError(t, err)
 
 	publisher := validSales("acme:demo:optin")
@@ -104,7 +109,7 @@ func TestListFiltersAndTestPatternOrder(t *testing.T) {
 	publisher.Destination.DatasetID = "dkp_dmc_publishers_raw_eu_dev"
 	publisher.Destination.TableID = "profiles"
 	publisher.Patterns.Ingest = `^bucket/acme/optin/.*\.csv$`
-	_, err = uc.Create(ctx, publisher)
+	_, err = repo.Create(ctx, publisher)
 	require.NoError(t, err)
 
 	active, err := uc.List(ctx, model.ListFilter{})
@@ -130,7 +135,7 @@ func TestListFiltersAndTestPatternOrder(t *testing.T) {
 func TestReferentialTypeIsReadableAndRejectedOnWrite(t *testing.T) {
 	t.Parallel()
 
-	uc, repo := newUsecase()
+	uc, repo, directory := newUsecase()
 	ctx := context.Background()
 	stored := validSales("acme:referential:robinson")
 	stored.Organization.Type = "referential"
@@ -148,33 +153,41 @@ func TestReferentialTypeIsReadableAndRejectedOnWrite(t *testing.T) {
 	require.Len(t, listed, 1)
 	assert.Equal(t, model.OrganizationType("referential"), listed[0].Organization.Type)
 
-	_, err = uc.Update(ctx, stored.ID, stored)
+	update := stored
+	update.Identity = model.Identity{}
+	_, err = uc.Update(ctx, stored.ID, update)
 	var validation *model.ValidationError
 	require.ErrorAs(t, err, &validation)
 	assert.Contains(t, issueFields(validation.Issues), "organization.type")
 
 	_, err = uc.Create(ctx, validSales("other:demo:sales"))
 	require.NoError(t, err)
-	rejected := validSales("other:referential:sales")
-	rejected.Organization.Type = "referential"
-	_, err = uc.Create(ctx, rejected)
-	require.ErrorAs(t, err, &validation)
-	assert.Contains(t, issueFields(validation.Issues), "organization.type")
+	directory.AddAccount("acc-other", "other", "org-acme")
+	ignored := validSales("other:referential:sales")
+	ignored.NestedName = "other"
+	ignored.Organization.Type = "referential"
+	created, err := uc.Create(ctx, ignored)
+	require.NoError(t, err)
+	assert.Equal(t, model.OrganizationTypeAdvertiser, created.Organization.Type)
+	assert.Equal(t, "org-acme", created.Organization.ID)
 }
 
 func TestUpdateAndDelete(t *testing.T) {
 	t.Parallel()
 
-	uc, _ := newUsecase()
+	uc, _, _ := newUsecase()
 	ctx := context.Background()
-	_, err := uc.Create(ctx, validSales("acme:demo:sales"))
+	created, err := uc.Create(ctx, validSales("acme:demo:sales"))
 	require.NoError(t, err)
 
 	updated := validSales("acme:demo:sales")
-	updated.PublisherName = "Renamed"
+	updated.Mode = model.ModeOverwrite
+	updated.Patterns.Preprocess = "ciblexo/.+"
 	saved, err := uc.Update(ctx, "acme:demo:sales", updated)
 	require.NoError(t, err)
-	assert.Equal(t, "Renamed", saved.PublisherName)
+	assert.Equal(t, model.ModeOverwrite, saved.Mode)
+	assert.Equal(t, created.Patterns, saved.Patterns)
+	assert.Equal(t, "acme:demo:sales", saved.PublisherName)
 
 	missing := validSales("missing:demo:sales")
 	_, err = uc.Update(ctx, "missing:demo:sales", missing)
@@ -184,10 +197,16 @@ func TestUpdateAndDelete(t *testing.T) {
 	require.ErrorIs(t, uc.Delete(ctx, "acme:demo:sales"), model.ErrNotFound)
 }
 
-func newUsecase() (port.LoadConfigUsecase, *memory.Repository) {
+func newUsecase() (port.LoadConfigUsecase, *memory.Repository, *memory.Directory) {
 	repo := memory.NewRepository()
+	directory := memory.NewDirectory()
+	directory.AddOrganization("org-acme", "Acme", model.PartnerAdvertiser)
+	directory.AddAccount("acc-demo", "demo", "org-acme")
+	directory.AddOrganization("org-pub", "Ciblexo", model.PartnerPublisher)
 
-	return loadconfig.NewUsecase(repo, slog.Default()), repo
+	usecase := loadconfig.NewUsecase(repo, directory, model.DevDeriveConfig(), slog.Default())
+
+	return usecase, repo, directory
 }
 
 func TestMutationsLogIAPEmail(t *testing.T) {
@@ -196,14 +215,17 @@ func TestMutationsLogIAPEmail(t *testing.T) {
 	var logBuffer bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
 	repo := memory.NewRepository()
-	uc := loadconfig.NewUsecase(repo, logger)
+	directory := memory.NewDirectory()
+	directory.AddOrganization("org-acme", "Acme", model.PartnerAdvertiser)
+	directory.AddAccount("acc-demo", "demo", "org-acme")
+	uc := loadconfig.NewUsecase(repo, directory, model.DevDeriveConfig(), logger)
 	ctx := port.WithPrincipal(context.Background(), port.Principal{Email: "ada@example.com"})
 
 	_, err := uc.Create(ctx, validSales("acme:demo:sales"))
 	require.NoError(t, err)
 
 	updated := validSales("acme:demo:sales")
-	updated.PublisherName = "Renamed"
+	updated.Mode = model.ModeOverwrite
 	_, err = uc.Update(ctx, "acme:demo:sales", updated)
 	require.NoError(t, err)
 
@@ -221,8 +243,14 @@ func validSales(id string) model.LoadConfig {
 	return model.LoadConfig{
 		ID:            id,
 		PublisherName: "Acme",
-		Mode:          model.ModeAppend,
-		Patterns:      model.Patterns{Ingest: `^bucket/acme/sales/.*\.csv$`},
+		Identity: model.Identity{
+			Kind:             model.PartnerAdvertiser,
+			OrganizationName: "Acme",
+			NestedName:       "demo",
+			FileType:         model.ImportSales,
+		},
+		Mode:     model.ModeAppend,
+		Patterns: model.Patterns{Ingest: `^bucket/acme/sales/.*\.csv$`},
 		Destination: model.Destination{
 			ProjectID: "demo-project",
 			DatasetID: "dkp_dmc_advertisers_raw_eu_dev",

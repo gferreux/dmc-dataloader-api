@@ -66,13 +66,26 @@ func (r *Repository) Create(_ context.Context, cfg model.LoadConfig) (model.Load
 }
 
 // Update replaces a document and refreshes updateTime.
-func (r *Repository) Update(_ context.Context, cfg model.LoadConfig) (model.LoadConfig, error) {
+func (r *Repository) Update(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error) {
+	return r.Move(ctx, cfg.ID, cfg)
+}
+
+// Move stores cfg under its id and drops fromID when the id changed.
+func (r *Repository) Move(_ context.Context, fromID string, cfg model.LoadConfig) (model.LoadConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	current, ok := r.items[cfg.ID]
+	current, ok := r.items[fromID]
 	if !ok {
 		return model.LoadConfig{}, model.ErrNotFound
+	}
+
+	if fromID != cfg.ID {
+		if _, exists := r.items[cfg.ID]; exists {
+			return model.LoadConfig{}, model.ErrConflict
+		}
+
+		delete(r.items, fromID)
 	}
 
 	stored := stamp(cfg, current.CreateTime, r.now())
@@ -99,6 +112,7 @@ func stamp(cfg model.LoadConfig, created, updated time.Time) model.LoadConfig {
 	stored := cfg.Clone()
 	stored.PartnerType = ""
 	stored.ImportType = ""
+	stored.Identity = model.Identity{}
 	stored.CreateTime = created
 	stored.UpdateTime = updated
 

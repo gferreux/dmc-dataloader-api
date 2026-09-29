@@ -24,16 +24,24 @@ func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, fu
 	if err != nil {
 		return nil, nil, err
 	}
+	directory, cleanup2, err := firestore.NewDirectory(ctx, appConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	deriveConfig := loadconfig.ProvideSettings(appConfig)
 	logger := loadconfig.ProvideLogger()
-	loadConfigUsecase := loadconfig.NewUsecase(repository, logger)
+	loadConfigUsecase := loadconfig.NewUsecase(repository, directory, deriveConfig, logger)
 	handler := loadconfig2.NewHandler(loadConfigUsecase)
 	authenticator, err := auth.NewAuthenticator(appConfig)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	appApp := app.New(appConfig, handler, authenticator)
 	return appApp, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

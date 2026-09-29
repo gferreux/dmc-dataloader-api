@@ -9,6 +9,10 @@ var (
 	ErrConflict = errors.New("load config already exists")
 	// ErrUnauthenticated is returned when the request has no accepted credentials.
 	ErrUnauthenticated = errors.New("unauthenticated")
+	// ErrDirectoryUnavailable is returned when the organization source cannot be read.
+	ErrDirectoryUnavailable = errors.New("organization directory unavailable")
+	// ErrEmptySlug is returned when slug normalization removes every character.
+	ErrEmptySlug = errors.New("empty slug")
 )
 
 // FieldIssue is one validation error or warning attached to a field path.

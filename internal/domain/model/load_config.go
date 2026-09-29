@@ -155,6 +155,10 @@ func KnownImport(importType string) bool {
 // deactivated, incremental, and mappings.<column>.isPartitionKey. Reads ignore
 // them. Updates merge them back so a write does not delete them.
 type LoadConfig struct {
+	// Identity is the wizard input. It is not stored. Reads fill it when the
+	// document id or patterns follow org:nested:fileType.
+	Identity `firestore:"-"`
+
 	ID          string    `firestore:"-" json:"id,omitempty"`
 	CreateTime  time.Time `firestore:"-" json:"createTime,omitzero"`
 	UpdateTime  time.Time `firestore:"-" json:"updateTime,omitzero"`
@@ -239,6 +243,7 @@ func Normalize(cfg LoadConfig) LoadConfig {
 	cfg.Mode = LoadMode(strings.TrimSpace(string(cfg.Mode)))
 	cfg.PartnerType = strings.ToLower(strings.TrimSpace(cfg.PartnerType))
 	cfg.ImportType = strings.ToLower(strings.TrimSpace(cfg.ImportType))
+	cfg.Identity = cfg.Normalized()
 	cfg.Patterns.Preprocess = strings.TrimSpace(cfg.Patterns.Preprocess)
 	cfg.Patterns.Ingest = strings.TrimSpace(cfg.Patterns.Ingest)
 	cfg.Destination.ProjectID = strings.TrimSpace(cfg.Destination.ProjectID)
@@ -287,8 +292,14 @@ func (c LoadConfig) HasPrimaryKey() bool {
 }
 
 // Present fills derived partner and import kinds for API responses.
+// Convention documents also get the wizard inputs parsed from the id or patterns.
 func (c LoadConfig) Present() LoadConfig {
 	c.PartnerType, c.ImportType = Classify(c)
+
+	c.Identity = Identity{}
+	if parsed, ok := ParseIdentity(c); ok {
+		c.Identity = parsed
+	}
 
 	return c
 }

@@ -1,14 +1,21 @@
 openapi: 3.0.3
 info:
   title: dmc-dataloader-api
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Console API for dmc-data-loader `load_config` documents.
 
     Persisted JSON matches the Firestore document described by
     `dekuple-labs/dmc-domain/pkg/model/data_loader_config.go`.
     `id` is the document id. `createTime` and `updateTime` are Firestore
-    snapshot metadata. `partnerType` and `importType` are derived and are not written.
+    snapshot metadata. `partnerType`, `importType`, `kind`, `organizationName`,
+    `nestedName`, and `fileType` are derived and are not written.
+
+    Create and update send `kind`, `organizationName`, `nestedName`, and
+    `fileType` plus `mode`, `bqParams`, and `mappings`. The server derives
+    `id`, `publisherName`, `patterns`, `notification`, `destination`, and
+    `organization`. Client values for those fields are ignored.
+    `POST /api/v1/load-configs/derive` previews the computed block.
 
     Mapping `type` is the domain iota: 0 RENAME, 1 SQL, 2 PREFIX_PATTERN,
     3 CUSTOM, 4 EXTRA_FIELDS, 5 MISSING_MAPPINGS, 6 ARRAY. 7 (ND) is invalid.
@@ -23,13 +30,14 @@ info:
     anything else this API does not declare). `organization.account` and
     `bqParams.nullMarker` are nullable. `organization.type` values other than
     `advertiser` and `publisher` (including `referential`) can be read and are
-    rejected on create and update.
+    rejected when an update keeps that stored type. Create sets the type from `kind`.
 servers:
   - url: /
 tags:
   - name: health
   - name: load-configs
   - name: templates
+  - name: organizations
   - name: meta
 paths:
   /healthz:
@@ -80,7 +88,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/LoadConfig"}
+            schema: {$ref: "#/components/schemas/LoadConfigWrite"}
       responses:
         "201":
           description: Created
@@ -93,6 +101,29 @@ paths:
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/Validation"}
+  /api/v1/load-configs/derive:
+    post:
+      tags: [load-configs]
+      summary: Preview the server-derived identity and plumbing
+      description: |
+        Computes the document id, publisherName, patterns, notification,
+        destination, and organization. Does not write. `warnings` includes
+        overlap with existing configs. Returns 422 when the wizard input is
+        invalid or the organization or account cannot be resolved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Identity"}
+      responses:
+        "200":
+          description: Computed block
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DerivedConfig"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
         "422": {$ref: "#/components/responses/Validation"}
   /api/v1/load-configs/validate:
     post:
@@ -162,24 +193,32 @@ paths:
       tags: [load-configs]
       summary: Replace one load config
       description: |
-        Modeled fields are replaced. Document fields this API does not model
-        are left in place, including `deactivated`, `incremental`, and
-        `isPartitionKey` inside a mapping that is still present. A mapping
-        column omitted from the body is removed.
+        `mode`, `bqParams`, and `mappings` are replaced. Document fields this
+        API does not model stay in place, including `deactivated`,
+        `incremental`, and `isPartitionKey` inside a mapping that is still
+        present. A mapping column omitted from the body is removed.
+
+        Stored derived fields stay as they are when `kind`, `organizationName`,
+        `nestedName`, and `fileType` are omitted or slug to the same document.
+        That keeps legacy patterns such as `ciblexo/.+`. When those inputs
+        change, the server re-derives the plumbing and moves the document to
+        the new id. The response `Location` header is set in that case.
+        409 means the new id already exists.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/LoadConfig"}
+            schema: {$ref: "#/components/schemas/LoadConfigWrite"}
       responses:
         "200":
-          description: Updated document
+          description: Updated document. Location is set when the document id changed.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/LoadConfig"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/Validation"}
     delete:
       tags: [load-configs]
@@ -188,6 +227,72 @@ paths:
         "204": {description: Deleted}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/organizations:
+    get:
+      tags: [organizations]
+      summary: Organizations for the wizard autocomplete
+      description: |
+        Active organizations whose type matches `type`. When the organization
+        source is unreachable or not permitted, the list is built from
+        load_config and a warning is logged.
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema: {type: string, enum: [advertiser, publisher]}
+      responses:
+        "200":
+          description: Matching organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/NamedRef"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/organizations/{id}/accounts:
+    get:
+      tags: [organizations]
+      summary: Advertiser accounts for one organization
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+          description: Organization document id.
+      responses:
+        "200":
+          description: Accounts. Empty when the organization has none.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/NamedRef"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/organizations/{slug}/bases:
+    get:
+      tags: [organizations]
+      summary: Publisher base names already used in load_config paths
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: {type: string}
+          description: Slug of the publisher organization name.
+        - in: query
+          name: type
+          required: true
+          schema: {type: string, enum: [publisher]}
+      responses:
+        "200":
+          description: Base names. `id` is omitted; a base has no document id.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/NamedRef"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
   /api/v1/templates:
     get:
       tags: [templates]
@@ -305,6 +410,24 @@ components:
           type: string
           enum: [optin, optout, blacklists, customers, stores, sales]
           description: Derived. Not stored.
+        kind:
+          type: string
+          readOnly: true
+          enum: [advertiser, publisher]
+          description: Wizard kind parsed from the id or patterns. Same value as partnerType when the document follows the convention.
+        organizationName:
+          type: string
+          readOnly: true
+          description: Slug of the organization, parsed from the id or patterns.
+        nestedName:
+          type: string
+          readOnly: true
+          description: Slug of the advertiser account or publisher base.
+        fileType:
+          type: string
+          readOnly: true
+          enum: [optin, optout, blacklists, customers, stores, sales]
+          description: Import kind parsed from the id or patterns. Same value as importType.
         publisherName: {type: string}
         mode: {type: string, enum: [APPEND, INCREMENTAL, OVERWRITE]}
         patterns: {$ref: "#/components/schemas/Patterns"}
@@ -317,9 +440,16 @@ components:
           additionalProperties: {$ref: "#/components/schemas/Mapping"}
     Patterns:
       type: object
+      description: |
+        Generated patterns are unanchored, matching existing load_config documents.
+        A leading `gs://` must still be able to match.
       properties:
-        preprocess: {type: string}
-        ingest: {type: string}
+        preprocess:
+          type: string
+          example: dkp-dmc-advertisers-raw-euw1-dev/gadol/lissac/sales/.+[.](csv|zip|gz|gzip|tgz|tar.gz|7z)
+        ingest:
+          type: string
+          example: dkp-dmc-advertisers-staging-euw1-dev/data/[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z/gadol/lissac/sales/.+
     Destination:
       type: object
       required: [projectId, datasetId, tableId]
@@ -390,6 +520,62 @@ components:
         required: {type: boolean}
         description: {type: string}
         formatHint: {type: string}
+    Identity:
+      type: object
+      required: [kind, organizationName, nestedName, fileType]
+      properties:
+        kind: {type: string, enum: [advertiser, publisher]}
+        organizationName:
+          type: string
+          example: bigmat_france
+        nestedName:
+          type: string
+          description: Advertiser account name, or publisher base name.
+          example: bigmat
+        fileType:
+          type: string
+          enum: [optin, optout, blacklists, customers, stores, sales]
+    LoadConfigWrite:
+      type: object
+      description: |
+        Fields the console sends. Derived fields (`id`, `publisherName`,
+        `patterns`, `notification`, `destination`, `organization`) are ignored
+        when present.
+      required: [kind, organizationName, nestedName, fileType, mode, bqParams, mappings]
+      properties:
+        kind: {type: string, enum: [advertiser, publisher]}
+        organizationName: {type: string, example: BigMat France}
+        nestedName: {type: string, example: bigmat}
+        fileType:
+          type: string
+          enum: [optin, optout, blacklists, customers, stores, sales]
+        mode: {type: string, enum: [APPEND, INCREMENTAL, OVERWRITE]}
+        bqParams: {$ref: "#/components/schemas/BQParams"}
+        mappings:
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/Mapping"}
+    DerivedConfig:
+      type: object
+      required: [id, publisherName, patterns, notification, destination, organization, warnings]
+      properties:
+        id: {type: string, example: bigmat_france:bigmat:sales}
+        publisherName: {type: string, example: bigmat_france:bigmat:sales}
+        patterns: {$ref: "#/components/schemas/Patterns"}
+        notification: {$ref: "#/components/schemas/Notification"}
+        destination: {$ref: "#/components/schemas/Destination"}
+        organization: {$ref: "#/components/schemas/Organization"}
+        warnings:
+          type: array
+          items: {$ref: "#/components/schemas/FieldIssue"}
+    NamedRef:
+      type: object
+      required: [name, slug]
+      properties:
+        id:
+          type: string
+          description: Absent for publisher bases.
+        name: {type: string}
+        slug: {type: string}
     Meta:
       type: object
       required: [modes, mappingTypes, sourceFormats, partnerTypes, importTypes]

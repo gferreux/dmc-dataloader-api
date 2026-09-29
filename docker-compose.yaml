@@ -24,6 +24,10 @@ services:
       DMC_FIRESTORE_PROJECT_ID: demo-dmc
       DMC_FIRESTORE_DATABASE_ID: dmc-data-loader-dev
       DMC_FIRESTORE_COLLECTION: load_config
+      DMC_ORGANIZATIONS_PROJECT_ID: demo-dmc
+      DMC_ORGANIZATIONS_DATABASE_ID: "(default)"
+      DMC_ORGANIZATIONS_COLLECTION: organizations
+      DMC_ORGANIZATIONS_ACCOUNTS_COLLECTION: accounts
       DMC_AUTH_MODE: none
       DMC_SERVER_CORS_ORIGINS: http://localhost:4200
       DMC_LOG_JSON: "false"

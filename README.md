@@ -19,7 +19,7 @@ internal/
     model/        — LoadConfig and configuration structs
     port/         — usecase and repository interfaces
     catalog/      — CSV templates and /meta
-    usecase/loadconfig/ — validation, overlap checks, filtering
+    usecase/loadconfig/ — validation, overlap checks, derived identity
 
 api/openapi.yaml
 config-debug.yaml — local config (no secrets)
@@ -79,8 +79,49 @@ All config keys use the `DMC_` prefix, with `.` replaced by `_`. A missing confi
 | `DMC_AUTH_IAP_AUDIENCE` | empty |
 | `DMC_LOG_LEVEL` | `info` |
 | `DMC_LOG_JSON` | `true` when no config file is present |
+| `DMC_ORGANIZATIONS_PROJECT_ID` | `dmc-datastores-dev-becb` |
+| `DMC_ORGANIZATIONS_DATABASE_ID` | `(default)` |
+| `DMC_ORGANIZATIONS_COLLECTION` | `organizations` |
+| `DMC_ORGANIZATIONS_ACCOUNTS_COLLECTION` | `accounts` |
+| `DMC_DERIVE_ADVERTISER_RAW_BUCKET` | `dkp-dmc-advertisers-raw-euw1-dev` |
+| `DMC_DERIVE_ADVERTISER_STAGING_BUCKET` | `dkp-dmc-advertisers-staging-euw1-dev` |
+| `DMC_DERIVE_ADVERTISER_NOTIFICATION_PROJECT_ID` | `dmc-curated-inventory-dev-e6da` |
+| `DMC_DERIVE_ADVERTISER_NOTIFICATION_TOPIC_ID` | `dkp-dmc-data-loader-notifications-dev` |
+| `DMC_DERIVE_ADVERTISER_DESTINATION_PROJECT_ID` | `dmc-raw-advertisers-dev-27c7` |
+| `DMC_DERIVE_ADVERTISER_DESTINATION_DATASET_ID` | `dkp_dmc_advertisers_raw_eu_dev` |
+| `DMC_DERIVE_PUBLISHER_RAW_BUCKET` | `dkp-dmc-publishers-raw-euw1-dev` |
+| `DMC_DERIVE_PUBLISHER_STAGING_BUCKET` | `dkp-dmc-publishers-staging-euw1-dev` |
+| `DMC_DERIVE_PUBLISHER_NOTIFICATION_PROJECT_ID` | `dmc-curated-inventory-dev-e6da` |
+| `DMC_DERIVE_PUBLISHER_NOTIFICATION_TOPIC_ID` | `dkp-dmc-data-loader-notifications-dev` |
+| `DMC_DERIVE_PUBLISHER_DESTINATION_PROJECT_ID` | `dmc-raw-publishers-dev-c69c` |
+| `DMC_DERIVE_PUBLISHER_DESTINATION_DATASET_ID` | `dkp_dmc_publishers_raw_eu_dev` |
+| `DMC_DERIVE_PUBLISHER_DESTINATION_TABLES_OPTIN` | `profiles` |
+| `DMC_DERIVE_PUBLISHER_DESTINATION_TABLES_OPTOUT` | `optout` |
 
 Cloud Run sits behind Google IAP. Set `DMC_AUTH_MODE=iap` and `DMC_AUTH_IAP_AUDIENCE` to the IAP backend audience (`/projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID`). The API verifies `X-Goog-IAP-JWT-Assertion` and logs that token's email on create, update, and delete. `DMC_AUTH_MODE=none` disables the check for local development. There is no second auth layer.
+
+## Derived identity
+
+The console sends four inputs: `kind` (`advertiser` or `publisher`), `organizationName`, `nestedName` (an advertiser account or a publisher base), and `fileType`. `POST /api/v1/load-configs/derive` previews the result. Create uses those inputs plus `mode`, `bqParams`, and `mappings`. Any client value for a derived field is ignored.
+
+`slug(x)` lowercases, trims, strips accents, turns spaces and `-` into `_`, and keeps `[a-z0-9_]`. An empty slug is rejected. The document id and `publisherName` are `{slug(organization)}:{slug(nested)}:{fileType}`, for example `bigmat_france:bigmat:sales`. Create returns 409 when that id exists.
+
+Patterns are unanchored, matching the documents already in `load_config`. `TS` is `[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z` and `EXT` is `[.](csv|zip|gz|gzip|tgz|tar.gz|7z)`. Derive does not warn about that shape. `POST /api/v1/load-configs/validate` still reports an unanchored regex or an unescaped dot when a document is checked as stored.
+
+- Advertiser preprocess: `{ADV_RAW}/{org}/{nested}/{fileType}/.+EXT`
+- Advertiser ingest: `{ADV_STAGING}/data/{TS}/{org}/{nested}/{fileType}/.+`
+- Publisher preprocess: `{PUB_RAW}/{org}/{nested}/{fileType}/.+EXT`
+- Publisher ingest: `{PUB_STAGING}/data/{TS}/{org}/{nested}/{fileType}/.+`
+
+Advertiser `destination.tableId` is the file type. Publisher `optin` loads `profiles` and `optout` loads `optout`, both configurable. Notification and destination project/dataset are configurable per kind. Buckets and topics default to the dev values in the table above.
+
+`organization.id` comes from an active document in the organizations collection whose slug and type match. An advertiser account is the active `accounts` document with that `organizationId` and a matching name slug; its id is `organization.account`. A publisher base has no id, so `organization.account` is `""`. If the directory does not contain the organization, or it cannot be read, the API reuses `organization.id` from an existing load_config of the same kind whose path contains that organization. An advertiser also needs the nested path segment so `organization.account` can be reused. A new publisher base can reuse the organization id from another base. Otherwise the API returns 422 naming the organization or account that was missing.
+
+`GET /api/v1/organizations?type=advertiser|publisher` returns `[{id, name, slug}]`. `GET /api/v1/organizations/{id}/accounts` returns the same shape for advertiser accounts. `GET /api/v1/organizations/{slug}/bases?type=publisher` returns `[{name, slug}]` for base names already present in load_config paths. If the organization source is unreachable or not permitted, the organization and account lists fall back to load_config and a warning is logged.
+
+PUT keeps stored derived values when the four inputs are omitted or unchanged, so a legacy pattern such as `ciblexo/.+` is not rewritten. Changing the organization, nested name, or file type re-derives the plumbing and moves the document to the new id. Unmodeled fields (`deactivated`, `incremental`, `isPartitionKey`) are still preserved. GET returns the derived fields. Documents whose id or patterns follow `org/nested/fileType` also return `kind`, `organizationName`, `nestedName`, and `fileType` parsed back from that convention. `kind` matches `partnerType` and `fileType` matches `importType`.
+
+`FIRESTORE_EMULATOR_HOST` redirects both the load_config client and the organization client. Docker Compose points the organization source at the emulator as well.
 
 ## What is stored
 
@@ -90,10 +131,10 @@ The stored shape mirrors `dekuple-labs/dmc-domain/pkg/model/data_loader_config.g
 - `bqParams.sourceFormat` is the integer `0` (CSV) or `1` (JSON).
 - `organization.account` and `bqParams.nullMarker` are nullable.
 - `id`, `createTime`, and `updateTime` are document metadata, not fields. They stand in for `DocumentHeader`.
-- `partnerType` and `importType` are computed on read and tagged `firestore:"-"` so they are not written.
+- `partnerType`, `importType`, `kind`, `organizationName`, `nestedName`, and `fileType` are computed on read and tagged `firestore:"-"` so they are not written.
 - Updates keep document fields the struct does not declare (`deactivated`, `incremental`, `mappings.<column>.isPartitionKey`, and any other extra). A mapping column left out of the body is removed.
 
-`organization.type` writes must be `advertiser` or `publisher`. List and read still return `referential` when a stored document has it. `partnerType` comes from `organization.type` when that value is `publisher` or `advertiser`, otherwise from `destination.datasetId`, otherwise from the import kind. `importType` prefers the last segment of the document id (`acme:demo:sales`) and otherwise uses `destination.tableId` (`profiles` is publisher opt-in).
+`organization.type` on a new document is the wizard `kind`. List and read still return `referential` when a stored document has it, and an update that keeps that stored type is rejected. `partnerType` comes from `organization.type` when that value is `publisher` or `advertiser`, otherwise from `destination.datasetId`, otherwise from the import kind. `importType` prefers the last segment of the document id (`acme:demo:sales`) and otherwise uses `destination.tableId` (`profiles` is publisher opt-in).
 
 ## Mapping types
 
@@ -111,4 +152,4 @@ These are the domain iota values. `GET /api/v1/meta` returns the same rows. Temp
 
 `7` is ND and is rejected. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`, `organization.type` other than advertiser or publisher) and warnings (overlap with another config, unanchored regex, unescaped dots, `INCREMENTAL` without `primaryKey`, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update. Overlap and test-pattern follow document id order, which is the loader's iteration order.
 
-Publisher opt-out and advertiser blacklists each use one required STRING column, `sha256_mobile_phone`. Customers and stores destination tables are assumed to be `customers` and `stores` in `dkp_dmc_advertisers_raw_eu_dev`.
+Publisher opt-out and advertiser blacklists each use one required STRING column, `sha256_mobile_phone`. Create sets an advertiser's `destination.tableId` to the file type (`blacklists`, `customers`, `stores`, or `sales`).

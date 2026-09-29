@@ -80,11 +80,14 @@ func TestCRUDAndRouting(t *testing.T) {
 func TestValidateReturnsWarningsWithoutFailingTheWrite(t *testing.T) {
 	t.Parallel()
 
-	handler := newAPI(auth.Noop{})
-	first := validSales("acme:demo:sales")
-	require.Equal(t, http.StatusCreated, perform(http.MethodPost, "/api/v1/load-configs", first, handler).Code)
+	handler, repo, directory := newStack(auth.Noop{})
+	directory.AddAccount("acc-lissac", "lissac", "org-acme")
+	first := validSales("seed:one:sales")
+	_, err := repo.Create(context.Background(), first)
+	require.NoError(t, err)
 
 	second := validSales("other:demo:sales")
+	second.NestedName = "lissac"
 	validated := perform(http.MethodPost, "/api/v1/load-configs/validate", second, handler)
 	require.Equal(t, http.StatusOK, validated.Code)
 	var report model.ValidationReport
@@ -103,9 +106,10 @@ func TestTestPatternAndMeta(t *testing.T) {
 	cfg := validSales("acme:demo:sales")
 	require.Equal(t, http.StatusCreated, perform(http.MethodPost, "/api/v1/load-configs", cfg, handler).Code)
 
+	const sample = "dkp-dmc-advertisers-staging-euw1-dev/data/2024-06-01T12:00:00Z/acme/demo/sales/orders.csv"
 	response := perform(http.MethodPost, "/api/v1/load-configs/test-pattern", map[string]string{
-		"pattern": `^bucket/acme/sales/file\.csv$`,
-		"path":    "bucket/acme/sales/file.csv",
+		"pattern": `^dkp-dmc-advertisers-staging-euw1-dev/data/2024-06-01T12:00:00Z/acme/demo/sales/orders\.csv$`,
+		"path":    sample,
 	}, handler)
 	require.Equal(t, http.StatusOK, response.Code)
 	var result model.PatternTest
@@ -125,6 +129,131 @@ func TestTestPatternAndMeta(t *testing.T) {
 	require.Equal(t, http.StatusOK, templates.Code)
 	assert.Contains(t, templates.Body.String(), `"sha256_mobile_phone"`)
 	assert.NotContains(t, templates.Body.String(), "needsConfirmation")
+}
+
+func TestDeriveOrganizationsAndLegacyPattern(t *testing.T) {
+	t.Parallel()
+
+	handler, repo, _ := newStack(auth.Noop{})
+
+	orgs := perform(http.MethodGet, "/api/v1/organizations?type=advertiser", nil, handler)
+	require.Equal(t, http.StatusOK, orgs.Code)
+	var orgItems []model.NamedRef
+	decode(t, orgs, &orgItems)
+	require.Len(t, orgItems, 1)
+	assert.Equal(t, "org-acme", orgItems[0].ID)
+	assert.Equal(t, "Acme", orgItems[0].Name)
+	assert.Equal(t, "acme", orgItems[0].Slug)
+
+	missingType := perform(http.MethodGet, "/api/v1/organizations", nil, handler)
+	assert.Equal(t, http.StatusBadRequest, missingType.Code)
+
+	accounts := perform(http.MethodGet, "/api/v1/organizations/org-acme/accounts", nil, handler)
+	require.Equal(t, http.StatusOK, accounts.Code)
+	var accountItems []model.NamedRef
+	decode(t, accounts, &accountItems)
+	require.Len(t, accountItems, 1)
+	assert.Equal(t, "acc-demo", accountItems[0].ID)
+	assert.Equal(t, "demo", accountItems[0].Slug)
+
+	derived := perform(http.MethodPost, "/api/v1/load-configs/derive", model.Identity{
+		Kind:             model.PartnerPublisher,
+		OrganizationName: "Ciblexo",
+		NestedName:       "lissac",
+		FileType:         model.ImportOptin,
+	}, handler)
+	require.Equal(t, http.StatusOK, derived.Code)
+	var preview model.DerivedConfig
+	decode(t, derived, &preview)
+	assert.Equal(t, "ciblexo:lissac:optin", preview.ID)
+	assert.Equal(t, "profiles", preview.Destination.TableID)
+	require.NotNil(t, preview.Organization.Account)
+	assert.Empty(t, *preview.Organization.Account)
+	assert.Contains(t, derived.Body.String(), `"account":""`)
+
+	missingAccount := perform(http.MethodPost, "/api/v1/load-configs/derive", model.Identity{
+		Kind:             model.PartnerAdvertiser,
+		OrganizationName: "Acme",
+		NestedName:       "missing",
+		FileType:         model.ImportSales,
+	}, handler)
+	assert.Equal(t, http.StatusUnprocessableEntity, missingAccount.Code)
+	assert.Contains(t, missingAccount.Body.String(), "account")
+	assert.Contains(t, missingAccount.Body.String(), "missing")
+
+	created := perform(http.MethodPost, "/api/v1/load-configs", model.LoadConfig{
+		Identity: model.Identity{
+			Kind:             model.PartnerPublisher,
+			OrganizationName: "Ciblexo",
+			NestedName:       "lissac",
+			FileType:         model.ImportOptin,
+		},
+		Mode:     model.ModeAppend,
+		BQParams: model.BQParams{SourceFormat: model.SourceFormatCSV, FieldDelimiter: ","},
+		Mappings: map[string]model.Mapping{
+			"sha256_mobile_phone": {Src: "sha256_mobile_phone", Type: model.MappingTypeRename},
+		},
+		Destination: model.Destination{ProjectID: "ignored"},
+	}, handler)
+	require.Equal(t, http.StatusCreated, created.Code)
+	var saved model.LoadConfig
+	decode(t, created, &saved)
+	assert.Equal(t, "ciblexo:lissac:optin", saved.ID)
+	assert.Equal(t, model.PartnerPublisher, saved.Kind)
+	assert.Equal(t, "lissac", saved.NestedName)
+	assert.NotEqual(t, "ignored", saved.Destination.ProjectID)
+
+	bases := perform(http.MethodGet, "/api/v1/organizations/ciblexo/bases?type=publisher", nil, handler)
+	require.Equal(t, http.StatusOK, bases.Code)
+	var baseItems []model.NamedRef
+	decode(t, bases, &baseItems)
+	require.Len(t, baseItems, 1)
+	assert.Equal(t, "lissac", baseItems[0].Slug)
+	assert.NotContains(t, bases.Body.String(), `"id"`)
+
+	badBases := perform(http.MethodGet, "/api/v1/organizations/ciblexo/bases", nil, handler)
+	assert.Equal(t, http.StatusBadRequest, badBases.Code)
+
+	empty := ""
+	_, err := repo.Create(context.Background(), model.LoadConfig{
+		ID:            "ciblexo",
+		PublisherName: "ciblexo",
+		Mode:          model.ModeAppend,
+		Patterns:      model.Patterns{Preprocess: "ciblexo/.+"},
+		Destination: model.Destination{
+			ProjectID: "demo",
+			DatasetID: "dkp_dmc_publishers_raw_eu_dev",
+			TableID:   "profiles",
+		},
+		Organization: model.Organization{
+			ID:      "uuid-ciblexo",
+			Account: &empty,
+			Type:    model.OrganizationTypePublisher,
+		},
+		BQParams: model.BQParams{SourceFormat: model.SourceFormatCSV},
+		Mappings: map[string]model.Mapping{
+			"sha256_mobile_phone": {Src: "sha256_mobile_phone", Type: model.MappingTypeRename},
+		},
+	})
+	require.NoError(t, err)
+
+	got := perform(http.MethodGet, "/api/v1/load-configs/ciblexo", nil, handler)
+	require.Equal(t, http.StatusOK, got.Code)
+	assert.NotContains(t, got.Body.String(), `"organizationName"`)
+	assert.Contains(t, got.Body.String(), "ciblexo/.+")
+
+	updated := perform(http.MethodPut, "/api/v1/load-configs/ciblexo", map[string]any{
+		"mode":     "OVERWRITE",
+		"bqParams": map[string]any{"sourceFormat": 0, "skipLeadingRows": 1},
+		"mappings": map[string]any{
+			"sha256_mobile_phone": map[string]any{"src": "sha256_mobile_phone", "type": 0},
+		},
+		"patterns": map[string]any{"preprocess": "should-not-stick/.+"},
+	}, handler)
+	require.Equal(t, http.StatusOK, updated.Code)
+	assert.Contains(t, updated.Body.String(), "ciblexo/.+")
+	assert.Contains(t, updated.Body.String(), `"mode":"OVERWRITE"`)
+	assert.NotContains(t, updated.Body.String(), "should-not-stick")
 }
 
 func TestCORSAndBadJSON(t *testing.T) {
@@ -171,13 +300,25 @@ func (denyAuth) Authenticate(context.Context, port.Credentials) (port.Principal,
 }
 
 func newAPI(authn port.Authenticator) http.Handler {
+	handler, _, _ := newStack(authn)
+
+	return handler
+}
+
+func newStack(authn port.Authenticator) (http.Handler, *memory.Repository, *memory.Directory) {
 	repo := memory.NewRepository()
-	usecase := loadconfig.NewUsecase(repo, slog.Default())
+	directory := memory.NewDirectory()
+	directory.AddOrganization("org-acme", "Acme", model.PartnerAdvertiser)
+	directory.AddAccount("acc-demo", "demo", "org-acme")
+	directory.AddOrganization("org-ciblexo", "Ciblexo", model.PartnerPublisher)
+	usecase := loadconfig.NewUsecase(repo, directory, model.DevDeriveConfig(), slog.Default())
 	handler := loadhandler.NewHandler(usecase)
 
-	return app.New(model.AppConfig{
+	httpHandler := app.New(model.AppConfig{
 		Server: model.ServerConfig{CORSOrigins: "http://localhost:4200"},
 	}, handler, authn).HTTPHandler()
+
+	return httpHandler, repo, directory
 }
 
 func perform(method, path string, body any, handler http.Handler) *httptest.ResponseRecorder {
@@ -224,8 +365,14 @@ func validSales(id string) model.LoadConfig {
 	return model.LoadConfig{
 		ID:            id,
 		PublisherName: "Acme",
-		Mode:          model.ModeAppend,
-		Patterns:      model.Patterns{Ingest: `^bucket/acme/sales/.*\.csv$`},
+		Identity: model.Identity{
+			Kind:             model.PartnerAdvertiser,
+			OrganizationName: "Acme",
+			NestedName:       "demo",
+			FileType:         model.ImportSales,
+		},
+		Mode:     model.ModeAppend,
+		Patterns: model.Patterns{Ingest: `^bucket/acme/sales/.*\.csv$`},
 		Destination: model.Destination{
 			ProjectID: "demo-project",
 			DatasetID: "dkp_dmc_advertisers_raw_eu_dev",

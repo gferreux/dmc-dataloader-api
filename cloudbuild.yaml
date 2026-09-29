@@ -42,6 +42,8 @@ steps:
   # Deployment stays commented out. Uncomment only when a service account and
   # trigger substitutions are ready. Region is europe-west1. Do not deploy from CI
   # until the mapping-type integers are confirmed against dmc-domain.
+  # Derived buckets and the organization source use DMC_DERIVE_* and
+  # DMC_ORGANIZATIONS_* (see README). Set them per environment before enabling deploy.
   # - id: "deploy-service"
   #   waitFor: ["push-image"]
   #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"

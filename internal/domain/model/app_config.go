@@ -8,10 +8,12 @@ type AppConfig struct {
 	AppVersion string `mapstructure:"-" validate:"required"`
 	BuildDate  string `mapstructure:"-" validate:"required"`
 
-	Log       LogConfig       `mapstructure:"log"       validate:"required"`
-	Server    ServerConfig    `mapstructure:"server"    validate:"required"`
-	Firestore FirestoreConfig `mapstructure:"firestore" validate:"required"`
-	Auth      AuthConfig      `mapstructure:"auth"      validate:"required"`
+	Log           LogConfig                `mapstructure:"log"           validate:"required"`
+	Server        ServerConfig             `mapstructure:"server"        validate:"required"`
+	Firestore     FirestoreConfig          `mapstructure:"firestore"     validate:"required"`
+	Organizations OrganizationSourceConfig `mapstructure:"organizations" validate:"required"`
+	Derive        DeriveConfig             `mapstructure:"derive"        validate:"required"`
+	Auth          AuthConfig               `mapstructure:"auth"          validate:"required"`
 }
 
 // LogConfig controls slog output.
@@ -34,6 +36,16 @@ type FirestoreConfig struct {
 	ProjectID  string `mapstructure:"project_id"  validate:"required"`
 	DatabaseID string `mapstructure:"database_id" validate:"required"`
 	Collection string `mapstructure:"collection"  validate:"required"`
+}
+
+// OrganizationSourceConfig selects the Firestore database that stores organizations
+// and advertiser accounts. It is separate from the load_config database because the
+// project and database are not confirmed to be the same.
+type OrganizationSourceConfig struct {
+	ProjectID          string `mapstructure:"project_id"          validate:"required"`
+	DatabaseID         string `mapstructure:"database_id"         validate:"required"`
+	Collection         string `mapstructure:"collection"          validate:"required"`
+	AccountsCollection string `mapstructure:"accounts_collection" validate:"required"`
 }
 
 // AuthConfig selects how callers are identified.

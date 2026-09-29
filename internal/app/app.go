@@ -36,12 +36,16 @@ func New(appConfig model.AppConfig, handler *loadconfighandler.Handler, authn po
 func (a *App) HTTPHandler() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/load-configs", a.handler.List)
+	api.HandleFunc("POST /api/v1/load-configs/derive", a.handler.Derive)
 	api.HandleFunc("POST /api/v1/load-configs/validate", a.handler.Validate)
 	api.HandleFunc("POST /api/v1/load-configs/test-pattern", a.handler.TestPattern)
 	api.HandleFunc("POST /api/v1/load-configs", a.handler.Create)
 	api.HandleFunc("GET /api/v1/load-configs/{id}", a.handler.Get)
 	api.HandleFunc("PUT /api/v1/load-configs/{id}", a.handler.Update)
 	api.HandleFunc("DELETE /api/v1/load-configs/{id}", a.handler.Delete)
+	api.HandleFunc("GET /api/v1/organizations", a.handler.ListOrganizations)
+	api.HandleFunc("GET /api/v1/organizations/{id}/accounts", a.handler.ListAccounts)
+	api.HandleFunc("GET /api/v1/organizations/{slug}/bases", a.handler.ListBases)
 	api.HandleFunc("GET /api/v1/templates", a.handler.Templates)
 	api.HandleFunc("GET /api/v1/meta", a.handler.Meta)
 	api.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {

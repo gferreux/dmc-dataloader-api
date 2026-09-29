@@ -8,6 +8,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/text v0.35.0
 	google.golang.org/api v0.215.0
 	google.golang.org/grpc v1.67.3
 )
@@ -64,7 +65,6 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect

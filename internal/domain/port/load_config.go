@@ -13,7 +13,17 @@ type LoadConfigRepository interface {
 	Get(ctx context.Context, id string) (model.LoadConfig, error)
 	Create(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error)
 	Update(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error)
+	// Move writes cfg under cfg.ID and deletes fromID when the document id changes.
+	// Unknown document fields from fromID are kept. fromID == cfg.ID updates in place.
+	Move(ctx context.Context, fromID string, cfg model.LoadConfig) (model.LoadConfig, error)
 	Delete(ctx context.Context, id string) error
+}
+
+// OrganizationDirectory reads organizations and advertiser accounts.
+// Implementations return ErrDirectoryUnavailable when the source cannot be read.
+type OrganizationDirectory interface {
+	ListOrganizations(ctx context.Context, kind string) ([]model.NamedRef, error)
+	ListAccounts(ctx context.Context, organizationID string) ([]model.NamedRef, error)
 }
 
 // LoadConfigUsecase is the console's load_config application service.
@@ -25,6 +35,10 @@ type LoadConfigUsecase interface {
 	Delete(ctx context.Context, id string) error
 	Validate(ctx context.Context, cfg model.LoadConfig) (model.ValidationReport, error)
 	TestPattern(ctx context.Context, pattern, path string) (model.PatternTest, error)
+	Derive(ctx context.Context, identity model.Identity) (model.DerivedConfig, error)
+	ListOrganizations(ctx context.Context, kind string) ([]model.NamedRef, error)
+	ListAccounts(ctx context.Context, organizationID string) ([]model.NamedRef, error)
+	ListBases(ctx context.Context, orgSlug string) ([]model.NamedRef, error)
 	Templates(ctx context.Context) []model.Template
 	Meta(ctx context.Context) model.Meta
 }

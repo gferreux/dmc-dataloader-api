@@ -84,7 +84,7 @@ func TestDerivedFieldsAreNotPersisted(t *testing.T) {
 	t.Parallel()
 
 	typ := reflect.TypeOf(model.LoadConfig{})
-	for _, name := range []string{"ID", "CreateTime", "UpdateTime", "PartnerType", "ImportType"} {
+	for _, name := range []string{"ID", "CreateTime", "UpdateTime", "PartnerType", "ImportType", "Identity"} {
 		field, ok := typ.FieldByName(name)
 		require.True(t, ok, name)
 		assert.Equal(t, "-", field.Tag.Get("firestore"), name)
