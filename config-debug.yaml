@@ -4,11 +4,11 @@ log:
   json: false
 
 server:
-  addr: :3000
+  addr: :3001
   read_timeout: 5s
   write_timeout: 15s
   shutdown_timeout: 10s
-  cors_origins: http://localhost:4200
+  cors_origins: http://localhost:4200,https://4200-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
 
 firestore:
   project_id: dmc-datastores-dev-becb
