@@ -39,19 +39,27 @@ steps:
         docker push ${_IMAGE_NAME}:${_VERSION_TAG}
         docker push ${_IMAGE_NAME}:${_CURRENT_TAG}
 
+  # Deployment stays commented out. Uncomment only when a service account and
+  # trigger substitutions are ready. Region is europe-west1. Do not deploy from CI
+  # until the mapping-type integers are confirmed against dmc-domain.
   # - id: "deploy-service"
   #   waitFor: ["push-image"]
   #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
   #   script: |-
   #     #!/usr/bin/env bash
-  #     gcloud run services update ${_CLOUDRUN_SVC_NAME}-${_ENV} --project=${_CLOUDRUN_PROJECT} --region=europe-west1 --container=${REPO_NAME} --image=${_IMAGE_NAME}:${_VERSION_TAG}
+  #     gcloud run services update ${_CLOUDRUN_SVC_NAME}-${_ENV} \
+  #       --project=${_CLOUDRUN_PROJECT} \
+  #       --region=${_CLOUDRUN_REGION} \
+  #       --container=${REPO_NAME} \
+  #       --image=${_IMAGE_NAME}:${_VERSION_TAG} \
+  #       --update-env-vars=DMC_FIRESTORE_PROJECT_ID=${_FIRESTORE_PROJECT_ID},DMC_FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID},DMC_FIRESTORE_COLLECTION=load_config,DMC_AUTH_MODE=none,DMC_LOG_JSON=true
 
   # - id: "deploy-job"
   #   waitFor: ["push-image"]
   #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
   #   script: |-
   #     #!/usr/bin/env bash
-  #     gcloud run jobs update ${_CLOUDRUN_JOB_NAME}-${_ENV} --project=${_CLOUDRUN_PROJECT} --region=europe-west1 --container=${REPO_NAME} --image=${_IMAGE_NAME}:${_VERSION_TAG}
+  #     gcloud run jobs update ${_CLOUDRUN_JOB_NAME}-${_ENV} --project=${_CLOUDRUN_PROJECT} --region=${_CLOUDRUN_REGION} --container=${REPO_NAME} --image=${_IMAGE_NAME}:${_VERSION_TAG}
 
 images:
   - "${_IMAGE_NAME}:${_VERSION_TAG}"
@@ -59,6 +67,10 @@ images:
 
 substitutions:
   _CURRENT_TAG: "latest"
+  _CLOUDRUN_REGION: "europe-west1"
+  _CLOUDRUN_PROJECT: "dmc-datastores-dev-becb"
+  _FIRESTORE_PROJECT_ID: "dmc-datastores-dev-becb"
+  _FIRESTORE_DATABASE_ID: "dmc-data-loader-dev"
   _IMAGE_NAME: ${_REGISTRY_LOCATION}-docker.pkg.dev/${_REGISTRY_PROJECT}/${_REGISTRY_NAME}/${REPO_NAME}
   _SSH_SECRET: projects/${PROJECT_ID}/secrets/common-deploy-key/versions/latest
 

@@ -1,5 +1,16 @@
 ---
 services:
+  firestore:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command:
+      - gcloud
+      - emulators
+      - firestore
+      - start
+      - --host-port=0.0.0.0:8080
+    ports:
+      - "8080:8080"
+
   api:
     build:
       context: .
@@ -8,5 +19,15 @@ services:
         appVersion: dev
     ports:
       - "3000:3000"
+    environment:
+      FIRESTORE_EMULATOR_HOST: firestore:8080
+      DMC_FIRESTORE_PROJECT_ID: demo-dmc
+      DMC_FIRESTORE_DATABASE_ID: dmc-data-loader-dev
+      DMC_FIRESTORE_COLLECTION: load_config
+      DMC_AUTH_MODE: none
+      DMC_SERVER_CORS_ORIGINS: http://localhost:4200
+      DMC_LOG_JSON: "false"
     volumes:
       - ./config-debug.yaml:/app/config.yaml:ro
+    depends_on:
+      - firestore

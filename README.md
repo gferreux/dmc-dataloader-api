@@ -1,6 +1,8 @@
 # dmc-dataloader-api
 
-Go API project template for Dekuple services. Built on Clean Architecture (ports & adapters), dependency injection with Wire, and Viper-based configuration.
+HTTP API for the dmc-data-loader console. It creates, updates, and deletes `load_config` documents in Firestore. dmc-data-loader still owns ingestion: for each dropped file it walks `load_config` and uses the first active document whose `patterns.preprocess` or `patterns.ingest` regex matches `bucket/objectName`.
+
+The contract shared with the Angular console is in [`api/openapi.yaml`](api/openapi.yaml).
 
 ## Structure
 
@@ -11,104 +13,99 @@ cmd/dmc-dataloader-api/
   wire_gen.go     — wire-generated DI (committed)
 
 internal/
-  app/
-    app.go                        — HTTP server, mux, routes
-    handler/<domain>/
-      handler.go                  — ServeHTTP, request parsing / response writing
-      dto.go                      — request/response types
-
+  app/            — HTTP server, middleware, handlers
+  adapter/        — Firestore, in-memory repository, authenticators
   domain/
-    model/app_config.go           — configuration structs
-    port/<domain>.go              — interfaces (usecases, daos, clients)
-    port/mocks/                   — mockery-generated mocks
-    usecase/<domain>/
-      usecase.go                  — business logic implementation
-      usecase_test.go
+    model/        — LoadConfig and configuration structs
+    port/         — usecase and repository interfaces
+    catalog/      — CSV templates and /meta
+    usecase/loadconfig/ — validation, overlap checks, filtering
 
-config-debug.yaml                 — local config (no secrets)
+api/openapi.yaml
+config-debug.yaml — local config (no secrets)
 ```
-
-## Using this template
-
-### 1. Copy and rename
-
-```bash
-cp -r dmc-dataloader-api dmc-my-service
-cd dmc-my-service
-```
-
-Replace `dmc-dataloader-api` with the service name in:
-
-- `go.mod` — module path
-- `cmd/` — directory name
-- `Dockerfile` — binary name
-- `Makefile` — wire target
-- `.mockery.yml` — package path
-- `docker-compose.yaml` — appName
-
-### 2. Add your domain
-
-Rename/replace `helloworld` with your business domain:
-
-```
-internal/domain/port/mydomain.go          — define the interface
-internal/domain/usecase/mydomain/         — implement the interface
-internal/app/handler/mydomain/            — HTTP handler
-```
-
-Register the route in `internal/app/app.go`.
-
-### 3. Update the config
-
-Add the required fields to `internal/domain/model/app_config.go` and `config-debug.yaml`.
-
-### 4. Regenerate Wire and mocks
-
-```bash
-make wire    # regenerates wire_gen.go after editing wire.go
-make mocks   # regenerates internal/domain/port/mocks/
-```
-
-## Development
-
-```bash
-# Run locally
-go run ./cmd/dmc-dataloader-api -config config-debug.yaml
-
-# Tests
-go test ./...
-
-# Lint
-golangci-lint run
-
-# Docker
-docker-compose up
-```
-
-## Environment variables
-
-All config keys can be overridden via environment variables using the `DMC_` prefix, with `.` replaced by `_`.
-
-```bash
-DMC_SERVER_ADDR=:8080
-DMC_LOG_LEVEL=debug
-DMC_LOG_JSON=true
-```
-
-## CI/CD
-
-| File | Trigger | Action |
-|---|---|---|
-| `.github/workflows/golang-lint.yml` | push | golangci-lint |
-| `.github/workflows/golang-unit-test.yml` | push / workflow_dispatch | go test ./... |
-| `cloudbuild.yaml` | Cloud Build trigger | build + push image |
-
-Cloud Run deployment is commented out in `cloudbuild.yaml` — uncomment and set `_CLOUDRUN_SVC_NAME` or `_CLOUDRUN_JOB_NAME` as needed.
 
 ## Conventions
 
 - **Ports** (interfaces) live in `internal/domain/port/` — never depend on adapters.
-- **Usecases** only import `model` and `port` — never `net/http`, never a concrete DAO.
+- **Usecases** only import `model`, `port`, and `catalog` — never `net/http`, never a concrete DAO.
 - **Handlers** contain no business logic — they translate HTTP ↔ domain.
 - **Mocks** are generated, do not edit them manually.
 - `wire_gen.go` is committed to allow building without the wire tool.
+
+## Run locally
+
+Against the Firestore emulator (does not touch the dev project):
+
+```bash
+gcloud emulators firestore start --host-port=localhost:8080
+export FIRESTORE_EMULATOR_HOST=localhost:8080
+export DMC_FIRESTORE_PROJECT_ID=demo-dmc
+export DMC_FIRESTORE_DATABASE_ID=dmc-data-loader-dev
+export DMC_FIRESTORE_COLLECTION=load_config
+export DMC_AUTH_MODE=none
+export DMC_SERVER_CORS_ORIGINS=http://localhost:4200
+go run ./cmd/dmc-dataloader-api -config config-debug.yaml
+```
+
+`config-debug.yaml` points at the dev database. Environment variables override it, which is what keeps the emulator from writing to GCP. Application Default Credentials are used when `FIRESTORE_EMULATOR_HOST` is unset.
+
+Docker Compose starts the emulator and the API together:
+
+```bash
+docker compose up --build
+```
+
+The API listens on `:3000` unless `PORT` is set (Cloud Run) or `DMC_SERVER_ADDR` is set.
+
+```bash
+go test ./...
+golangci-lint run
+make wire    # after editing wire.go
+```
+
+## Environment
+
+All config keys use the `DMC_` prefix, with `.` replaced by `_`. A missing config file is allowed; defaults match the dev database below.
+
+| Variable | Default |
+|---|---|
+| `DMC_FIRESTORE_PROJECT_ID` | `dmc-datastores-dev-becb` |
+| `DMC_FIRESTORE_DATABASE_ID` | `dmc-data-loader-dev` |
+| `DMC_FIRESTORE_COLLECTION` | `load_config` |
+| `DMC_SERVER_ADDR` | `:3000` (`PORT` wins when this is unset) |
+| `DMC_SERVER_CORS_ORIGINS` | empty (comma-separated list, or `*`) |
+| `DMC_AUTH_MODE` | `none` |
+| `DMC_AUTH_IAP_AUDIENCE` | empty |
+| `DMC_LOG_LEVEL` | `info` |
+| `DMC_LOG_JSON` | `true` when no config file is present |
+
+`auth.mode=none` does not check a user credential. Put IAP or Cloud Run IAM in front of the service. `auth.mode=iap` requires `X-Goog-IAP-JWT-Assertion`. When `DMC_AUTH_IAP_AUDIENCE` is set, that JWT is verified with Google's ID token validator. When the audience is empty, the header only has to be present.
+
+## What is stored
+
+Documents stay compatible with the loader's decode:
+
+- Field names are the Firestore names (`publisherName`, `bqParams`, `mappings.<column>.src`, …).
+- `id`, `createTime`, and `updateTime` are document metadata, not fields.
+- `partnerType` and `importType` are computed on read and tagged `firestore:"-"` so they are not written. They could not be confirmed as harmless extra fields because `github.com/dekuple-labs/dmc-domain` was not fetchable.
+
+`partnerType` comes from `organization.type` when that value is `publisher` or `advertiser`, otherwise from `destination.datasetId`, otherwise from the import kind. `importType` prefers the last segment of the document id (`acme:demo:sales`) and otherwise uses `destination.tableId` (`profiles` is publisher opt-in).
+
+## Mapping types
+
+These integers are a working table, not a copy of `dmodel`. Confirm them before production writes.
+
+| value | label | BigQuery type |
+|---|---|---|
+| 0 | STRING | STRING |
+| 1 | INTEGER | INTEGER |
+| 2 | FLOAT | FLOAT |
+| 3 | BOOLEAN | BOOLEAN |
+| 4 | TIMESTAMP | TIMESTAMP |
+| 5 | DATE | DATE |
+| 6 | JSON | JSON |
+
+`GET /api/v1/meta` returns the same table. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`) and warnings (overlap of active patterns, unanchored regex, unescaped dots, incremental without `primaryKey`, mode/`incremental` mismatch, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update.
+
+Publisher opt-out and advertiser blacklist templates are placeholders (`needsConfirmation: true`). Customers and stores destination tables are assumed to be `customers` and `stores` in `dkp_dmc_advertisers_raw_eu_dev`.

@@ -1,0 +1,410 @@
+openapi: 3.0.3
+info:
+  title: dmc-dataloader-api
+  version: 0.1.0
+  description: |
+    Console API for dmc-data-loader `load_config` documents.
+
+    Persisted JSON matches the Firestore document. `id` is the document id.
+    `createTime` and `updateTime` are Firestore snapshot metadata.
+    `partnerType` and `importType` are derived and are not written.
+
+    Mapping `type` integers 0-6 are a working table (STRING, INTEGER, FLOAT,
+    BOOLEAN, TIMESTAMP, DATE, JSON). They were not confirmed against
+    `dmodel.LoadConfig` because that module was not available here.
+
+    The loader's first-match order is approximated by ascending document id,
+    skipping deactivated configs. A config matches a `bucket/objectName` path
+    when either `patterns.preprocess` or `patterns.ingest` matches.
+servers:
+  - url: /
+tags:
+  - name: health
+  - name: load-configs
+  - name: templates
+  - name: meta
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is up
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+  /api/v1/load-configs:
+    get:
+      tags: [load-configs]
+      summary: List load configs
+      parameters:
+        - $ref: "#/components/parameters/partnerType"
+        - $ref: "#/components/parameters/importType"
+        - in: query
+          name: q
+          schema: {type: string}
+          description: Case-insensitive match on id, names, destination, and patterns.
+        - in: query
+          name: includeDeactivated
+          schema: {type: boolean, default: false}
+          description: When false or omitted, deactivated configs are hidden.
+      responses:
+        "200":
+          description: Matching configs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/LoadConfig"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [load-configs]
+      summary: Create a load config
+      description: |
+        Returns 422 when validation errors are present. Warnings (overlap,
+        unanchored regex, and so on) do not block the write; call
+        `/load-configs/validate` to see them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoadConfig"}
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoadConfig"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/Validation"}
+  /api/v1/load-configs/validate:
+    post:
+      tags: [load-configs]
+      summary: Validate a document without writing it
+      description: Always 200 when the body parses. Errors and warnings are in the body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoadConfig"}
+      responses:
+        "200":
+          description: Validation report
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ValidationReport"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/load-configs/test-pattern:
+    post:
+      tags: [load-configs]
+      summary: Test a regex and report which stored config the loader would pick
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pattern, path]
+              properties:
+                pattern: {type: string}
+                path:
+                  type: string
+                  description: Value the loader matches, `bucket/objectName`.
+      responses:
+        "200":
+          description: Match result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matches, matchingConfigId]
+                properties:
+                  matches: {type: boolean}
+                  matchingConfigId:
+                    type: string
+                    nullable: true
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/Validation"}
+  /api/v1/load-configs/{id}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+    get:
+      tags: [load-configs]
+      summary: Get one load config
+      responses:
+        "200":
+          description: The document
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoadConfig"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    put:
+      tags: [load-configs]
+      summary: Replace one load config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoadConfig"}
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoadConfig"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/Validation"}
+    delete:
+      tags: [load-configs]
+      summary: Delete one load config
+      responses:
+        "204": {description: Deleted}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/v1/templates:
+    get:
+      tags: [templates]
+      summary: Recommended CSV schemas and starter documents
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Template"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /api/v1/meta:
+    get:
+      tags: [meta]
+      summary: Closed sets used by the console
+      responses:
+        "200":
+          description: Meta
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Meta"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+components:
+  parameters:
+    id:
+      in: path
+      name: id
+      required: true
+      schema: {type: string}
+      description: Firestore document id, for example `acme:demo:sales`.
+    partnerType:
+      in: query
+      name: partnerType
+      schema: {type: string, enum: [publisher, advertiser]}
+    importType:
+      in: query
+      name: importType
+      schema:
+        type: string
+        enum: [optin, optout, blacklists, customers, stores, sales]
+  responses:
+    BadRequest:
+      description: Malformed JSON or query
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Unauthorized:
+      description: Authenticator rejected the caller
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    NotFound:
+      description: Document or route not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Conflict:
+      description: Document id already exists
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    Validation:
+      description: Document failed validation
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details:
+              type: array
+              items: {$ref: "#/components/schemas/FieldIssue"}
+    FieldIssue:
+      type: object
+      required: [field, message]
+      properties:
+        field: {type: string}
+        message: {type: string}
+    ValidationReport:
+      type: object
+      required: [errors, warnings]
+      properties:
+        errors:
+          type: array
+          items: {$ref: "#/components/schemas/FieldIssue"}
+        warnings:
+          type: array
+          items: {$ref: "#/components/schemas/FieldIssue"}
+    LoadConfig:
+      type: object
+      required: [publisherName, mode, deactivated, patterns, destination, bqParams, mappings]
+      properties:
+        id: {type: string}
+        createTime: {type: string, format: date-time, readOnly: true}
+        updateTime: {type: string, format: date-time, readOnly: true}
+        partnerType:
+          type: string
+          enum: [publisher, advertiser]
+          description: Derived. Not stored.
+        importType:
+          type: string
+          enum: [optin, optout, blacklists, customers, stores, sales]
+          description: Derived. Not stored.
+        publisherName: {type: string}
+        mode: {type: string, enum: [APPEND, INCREMENTAL, OVERWRITE]}
+        deactivated: {type: boolean}
+        incremental: {type: boolean}
+        patterns: {$ref: "#/components/schemas/Patterns"}
+        destination: {$ref: "#/components/schemas/Destination"}
+        organization: {$ref: "#/components/schemas/Organization"}
+        notification: {$ref: "#/components/schemas/Notification"}
+        bqParams: {$ref: "#/components/schemas/BQParams"}
+        mappings:
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/Mapping"}
+    Patterns:
+      type: object
+      properties:
+        preprocess: {type: string}
+        ingest: {type: string}
+    Destination:
+      type: object
+      required: [projectId, datasetId, tableId]
+      properties:
+        projectId: {type: string}
+        datasetId: {type: string}
+        tableId: {type: string}
+    Organization:
+      type: object
+      properties:
+        id: {type: string}
+        account: {type: string}
+        type: {type: string}
+    Notification:
+      type: object
+      properties:
+        projectId: {type: string}
+        topicId: {type: string}
+    BQParams:
+      type: object
+      required: [skipLeadingRows, sourceFormat]
+      properties:
+        fieldDelimiter: {type: string}
+        skipLeadingRows: {type: integer}
+        nullMarker: {type: string}
+        quote: {type: string}
+        sourceFormat: {type: string, enum: [CSV, NEWLINE_DELIMITED_JSON]}
+    Mapping:
+      type: object
+      required: [src, type]
+      properties:
+        src: {type: string, description: CSV column name or SQL expression.}
+        type:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Working table. See Meta.mappingTypes. Unverified against dmc-domain.
+        primaryKey: {type: boolean}
+        isPartitionKey: {type: boolean}
+        useInDeleteFilter: {type: boolean}
+        isRequiredPartitionFilter: {type: boolean}
+    Template:
+      type: object
+      required: [partnerType, importType, label, needsConfirmation, columns, defaults]
+      properties:
+        partnerType: {type: string}
+        importType: {type: string}
+        label: {type: string}
+        needsConfirmation:
+          type: boolean
+          description: True for opt-out and blacklists, whose columns are not confirmed.
+        confirmationNote: {type: string}
+        columns:
+          type: array
+          items: {$ref: "#/components/schemas/TemplateColumn"}
+        defaults: {$ref: "#/components/schemas/LoadConfig"}
+    TemplateColumn:
+      type: object
+      required: [name, bqType, required, description]
+      properties:
+        name: {type: string}
+        bqType: {type: string}
+        required: {type: boolean}
+        description: {type: string}
+        formatHint: {type: string}
+    Meta:
+      type: object
+      required: [modes, mappingTypes, sourceFormats, partnerTypes, importTypes]
+      properties:
+        modes:
+          type: array
+          items: {type: string}
+        mappingTypes:
+          type: array
+          items:
+            type: object
+            required: [value, label, bqType]
+            properties:
+              value: {type: integer}
+              label: {type: string}
+              bqType: {type: string}
+        sourceFormats:
+          type: array
+          items: {type: string}
+        partnerTypes:
+          type: array
+          items: {type: string}
+        importTypes:
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+          example:
+            publisher: [optin, optout]
+            advertiser: [blacklists, customers, stores, sales]

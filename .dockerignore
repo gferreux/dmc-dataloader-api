@@ -1,0 +1,6 @@
+.git
+bin
+dmc-dataloader-api
+config.yaml
+*.md
+!README.md

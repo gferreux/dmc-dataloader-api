@@ -7,18 +7,32 @@
 package main
 
 import (
+	"context"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/auth"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/firestore"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app"
-	helloworld2 "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/helloworld"
+	loadconfig2 "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
-	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/usecase/helloworld"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/usecase/loadconfig"
 )
 
 // Injectors from wire.go:
 
 // InitializeApp wires the dependency graph and builds the application.
-func InitializeApp(appConfig model.AppConfig) *app.App {
-	helloWorldUsecase := helloworld.NewHelloWorldUsecase()
-	handler := helloworld2.NewHandler(helloWorldUsecase)
-	appApp := app.New(appConfig, handler)
-	return appApp
+func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, func(), error) {
+	repository, cleanup, err := firestore.NewRepository(ctx, appConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	loadConfigUsecase := loadconfig.NewUsecase(repository)
+	handler := loadconfig2.NewHandler(loadConfigUsecase)
+	authenticator, err := auth.NewAuthenticator(appConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	appApp := app.New(appConfig, handler, authenticator)
+	return appApp, func() {
+		cleanup()
+	}, nil
 }

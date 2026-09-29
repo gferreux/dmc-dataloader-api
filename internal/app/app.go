@@ -9,38 +9,68 @@ import (
 	"os/signal"
 	"syscall"
 
-	helloworldhandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/helloworld"
+	loadconfighandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/httpx"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/middleware"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/port"
 )
 
+// App is the HTTP process.
 type App struct {
-	appConfig         model.AppConfig
-	helloWorldHandler *helloworldhandler.Handler
+	appConfig model.AppConfig
+	handler   *loadconfighandler.Handler
+	authn     port.Authenticator
 }
 
-func New(appConfig model.AppConfig, helloWorldHandler *helloworldhandler.Handler) *App {
+// New builds the application.
+func New(appConfig model.AppConfig, handler *loadconfighandler.Handler, authn port.Authenticator) *App {
 	return &App{
-		appConfig:         appConfig,
-		helloWorldHandler: helloWorldHandler,
+		appConfig: appConfig,
+		handler:   handler,
+		authn:     authn,
 	}
 }
 
+// HTTPHandler returns the fully wired HTTP handler, including CORS and auth.
+func (a *App) HTTPHandler() http.Handler {
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/load-configs", a.handler.List)
+	api.HandleFunc("POST /api/v1/load-configs/validate", a.handler.Validate)
+	api.HandleFunc("POST /api/v1/load-configs/test-pattern", a.handler.TestPattern)
+	api.HandleFunc("POST /api/v1/load-configs", a.handler.Create)
+	api.HandleFunc("GET /api/v1/load-configs/{id}", a.handler.Get)
+	api.HandleFunc("PUT /api/v1/load-configs/{id}", a.handler.Update)
+	api.HandleFunc("DELETE /api/v1/load-configs/{id}", a.handler.Delete)
+	api.HandleFunc("GET /api/v1/templates", a.handler.Templates)
+	api.HandleFunc("GET /api/v1/meta", a.handler.Meta)
+	api.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "route not found", nil)
+	})
+
+	protected := middleware.CORS(middleware.SplitOrigins(a.appConfig.Server.CORSOrigins))(
+		middleware.Authenticate(a.authn)(api),
+	)
+
+	root := http.NewServeMux()
+	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("OK"))
+	})
+	root.Handle("/", protected)
+
+	return root
+}
+
+// Run serves HTTP until the process is signaled to stop.
 func (a *App) Run(ctx context.Context) error {
 	rootCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	mux := http.NewServeMux()
-
-	mux.Handle("GET /hello", a.helloWorldHandler)
-
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("OK"))
-	})
-
 	server := http.Server{
-		Addr:        a.appConfig.Server.Addr,
-		ReadTimeout: a.appConfig.Server.ReadTimeout,
-		Handler:     mux,
+		Addr:         a.appConfig.Server.Addr,
+		ReadTimeout:  a.appConfig.Server.ReadTimeout,
+		WriteTimeout: a.appConfig.Server.WriteTimeout,
+		Handler:      a.HTTPHandler(),
 		BaseContext: func(net.Listener) context.Context {
 			return ctx
 		},

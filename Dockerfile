@@ -13,6 +13,8 @@ RUN go mod download
 COPY ./cmd/ ./cmd
 COPY ./internal/ ./internal
 
+ENV CGO_ENABLED=0
+
 RUN go build -ldflags "\
     -s -w \
     -X main.AppName=${appName} \
