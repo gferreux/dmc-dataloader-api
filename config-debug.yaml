@@ -1,0 +1,9 @@
+---
+log:
+  level: debug
+  json: false
+
+server:
+  addr: :3000
+  read_timeout: 5s
+  shutdown_timeout: 10s

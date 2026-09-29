@@ -1,0 +1,8 @@
+with-expecter: True
+
+packages:
+  github.com/dekuple-labs/dmc-dataloader-api/internal/domain/port:
+    config:
+      dir: "internal/domain/port/mocks"
+      outpkg: "mocks"
+      all: True

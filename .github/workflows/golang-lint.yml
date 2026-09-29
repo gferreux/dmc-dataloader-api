@@ -1,0 +1,30 @@
+name: golang-lint
+on: [ push ]
+
+permissions:
+  contents: read
+
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Enforce Git SSH
+        run: git config --global url.ssh://git@github.com/.insteadOf https://github.com/
+
+      - uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.ORGANIZATION_DEPLOY_KEY }}
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.2
+          args: --timeout=5m

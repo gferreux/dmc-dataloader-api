@@ -1,0 +1,26 @@
+name: golang-unit-test
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Enforce Git SSH
+        run: git config --global url.ssh://git@github.com/.insteadOf https://github.com/
+
+      - uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.ORGANIZATION_DEPLOY_KEY }}
+
+      - name: Test with the Go CLI
+        run: go test -v ./...

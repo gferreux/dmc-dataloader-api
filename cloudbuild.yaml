@@ -1,0 +1,73 @@
+steps:
+  - id: "prepare-ssh"
+    waitFor: ["-"]
+    name: "gcr.io/cloud-builders/git"
+    secretEnv: ["SSH_KEY"]
+    entrypoint: "bash"
+    args:
+      - -c
+      - |
+        echo "$$SSH_KEY" >> /workspace/id_rsa
+        chmod 400 /workspace/id_rsa
+
+  - id: "build-image"
+    waitFor: ["prepare-ssh"]
+    name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
+    args:
+      - -c
+      - >
+        docker build
+        --build-arg appName=${_APP_NAME}
+        --build-arg appVersion=${_VERSION_TAG}
+        --build-arg vcsRef=${SHORT_SHA}
+        --build-arg buildDate=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        --ssh default=/workspace/id_rsa
+        -t ${_IMAGE_NAME}:${_VERSION_TAG}
+        -t ${_IMAGE_NAME}:${_CURRENT_TAG}
+        .
+    env:
+      - "DOCKER_BUILDKIT=1"
+
+  - id: "push-image"
+    waitFor: ["build-image"]
+    name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
+    args:
+      - -c
+      - |-
+        docker push ${_IMAGE_NAME}:${_VERSION_TAG}
+        docker push ${_IMAGE_NAME}:${_CURRENT_TAG}
+
+  # - id: "deploy-service"
+  #   waitFor: ["push-image"]
+  #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+  #   script: |-
+  #     #!/usr/bin/env bash
+  #     gcloud run services update ${_CLOUDRUN_SVC_NAME}-${_ENV} --project=${_CLOUDRUN_PROJECT} --region=europe-west1 --container=${REPO_NAME} --image=${_IMAGE_NAME}:${_VERSION_TAG}
+
+  # - id: "deploy-job"
+  #   waitFor: ["push-image"]
+  #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+  #   script: |-
+  #     #!/usr/bin/env bash
+  #     gcloud run jobs update ${_CLOUDRUN_JOB_NAME}-${_ENV} --project=${_CLOUDRUN_PROJECT} --region=europe-west1 --container=${REPO_NAME} --image=${_IMAGE_NAME}:${_VERSION_TAG}
+
+images:
+  - "${_IMAGE_NAME}:${_VERSION_TAG}"
+  - "${_IMAGE_NAME}:${_CURRENT_TAG}"
+
+substitutions:
+  _CURRENT_TAG: "latest"
+  _IMAGE_NAME: ${_REGISTRY_LOCATION}-docker.pkg.dev/${_REGISTRY_PROJECT}/${_REGISTRY_NAME}/${REPO_NAME}
+  _SSH_SECRET: projects/${PROJECT_ID}/secrets/common-deploy-key/versions/latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
+  automapSubstitutions: true
+
+availableSecrets:
+  secretManager:
+    - versionName: ${_SSH_SECRET}
+      env: SSH_KEY

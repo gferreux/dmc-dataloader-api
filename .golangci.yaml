@@ -1,0 +1,100 @@
+version: "2"
+run:
+  go: "1.26"
+  modules-download-mode: readonly
+  tests: false
+  allow-parallel-runners: true
+linters:
+  default: all
+  disable:
+    - canonicalheader
+    - depguard
+    - exhaustruct
+    - funcorder
+    - godoclint
+    - godox
+    - gomoddirectives
+    - ireturn
+    - mnd
+    - noinlineerr
+    - nolintlint
+    - nonamedreturns
+    - wrapcheck
+    - wsl
+  settings:
+    cyclop:
+      max-complexity: 20
+    funlen:
+      lines: 120
+      statements: 60
+      ignore-comments: true
+    interfacebloat:
+      max: 15
+    ireturn:
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        - (or)$
+        - generic
+    tagliatelle:
+      case:
+        rules:
+          json: camel
+          yaml: snake
+    varnamelen:
+      ignore-names:
+        - i
+        - id
+        - it
+        - ch
+        - fn
+        - ok
+        - tx
+      ignore-type-assert-ok: true
+      ignore-map-index-ok: true
+      ignore-chan-recv-ok: false
+      ignore-decls:
+        - w http.ResponseWriter
+        - r *http.Request
+    wrapcheck:
+      ignore-interface-regexps:
+        - .*
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/dekuple-labs)
+    goimports:
+      local-prefixes:
+        - github.com/dekuple-labs
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -1,0 +1,12 @@
+---
+services:
+  api:
+    build:
+      context: .
+      args:
+        appName: dmc-dataloader-api
+        appVersion: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config-debug.yaml:/app/config.yaml:ro

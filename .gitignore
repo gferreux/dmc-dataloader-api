@@ -1,0 +1,10 @@
+# Binaries
+/dmc-dataloader-api
+
+# Config (never commit secrets)
+config.yaml
+config-*.yaml
+!config-debug.yaml
+
+# Go workspace sum (generated)
+go.work.sum
