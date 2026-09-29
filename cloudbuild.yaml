@@ -52,7 +52,7 @@ steps:
   #       --region=${_CLOUDRUN_REGION} \
   #       --container=${REPO_NAME} \
   #       --image=${_IMAGE_NAME}:${_VERSION_TAG} \
-  #       --update-env-vars=DMC_FIRESTORE_PROJECT_ID=${_FIRESTORE_PROJECT_ID},DMC_FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID},DMC_FIRESTORE_COLLECTION=load_config,DMC_AUTH_MODE=none,DMC_LOG_JSON=true
+  #       --update-env-vars=DMC_FIRESTORE_PROJECT_ID=${_FIRESTORE_PROJECT_ID},DMC_FIRESTORE_DATABASE_ID=${_FIRESTORE_DATABASE_ID},DMC_FIRESTORE_COLLECTION=load_config,DMC_AUTH_MODE=iap,DMC_AUTH_IAP_AUDIENCE=${_IAP_AUDIENCE},DMC_LOG_JSON=true
 
   # - id: "deploy-job"
   #   waitFor: ["push-image"]
@@ -71,6 +71,7 @@ substitutions:
   _CLOUDRUN_PROJECT: "dmc-datastores-dev-becb"
   _FIRESTORE_PROJECT_ID: "dmc-datastores-dev-becb"
   _FIRESTORE_DATABASE_ID: "dmc-data-loader-dev"
+  _IAP_AUDIENCE: ""
   _IMAGE_NAME: ${_REGISTRY_LOCATION}-docker.pkg.dev/${_REGISTRY_PROJECT}/${_REGISTRY_NAME}/${REPO_NAME}
   _SSH_SECRET: projects/${PROJECT_ID}/secrets/common-deploy-key/versions/latest
 

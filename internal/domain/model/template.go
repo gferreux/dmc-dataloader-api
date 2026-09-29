@@ -2,13 +2,11 @@ package model
 
 // Template is a recommended starting document for one partner and import kind.
 type Template struct {
-	PartnerType       string           `json:"partnerType"`
-	ImportType        string           `json:"importType"`
-	Label             string           `json:"label"`
-	NeedsConfirmation bool             `json:"needsConfirmation"`
-	ConfirmationNote  string           `json:"confirmationNote,omitempty"`
-	Columns           []TemplateColumn `json:"columns"`
-	Defaults          LoadConfig       `json:"defaults"`
+	PartnerType string           `json:"partnerType"`
+	ImportType  string           `json:"importType"`
+	Label       string           `json:"label"`
+	Columns     []TemplateColumn `json:"columns"`
+	Defaults    LoadConfig       `json:"defaults"`
 }
 
 // TemplateColumn describes one CSV / BigQuery column in a template.

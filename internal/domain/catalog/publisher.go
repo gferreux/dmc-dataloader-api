@@ -15,20 +15,13 @@ func publisherOptin() model.Template {
 }
 
 func publisherOptout() model.Template {
-	columns := []model.TemplateColumn{
-		col("mobile_phone", model.BQString, "Mobile phone to opt out.", hintMobile, true),
-		col("email", model.BQString, "Email address to opt out.", "", false),
-		col("optout_date", model.BQDate, "Date the opt-out was recorded.", hintDate, true),
-	}
+	columns := sha256MobileColumns()
 
 	return model.Template{
-		PartnerType:       model.PartnerPublisher,
-		ImportType:        model.ImportOptout,
-		Label:             "Publisher opt-out",
-		NeedsConfirmation: true,
-		ConfirmationNote: "No written spec was available for publisher opt-out. " +
-			"Confirm the columns and the BigQuery table with Greg before using this template.",
-		Columns: columns,
+		PartnerType: model.PartnerPublisher,
+		ImportType:  model.ImportOptout,
+		Label:       "Publisher opt-out",
+		Columns:     columns,
 		Defaults: defaults(
 			model.PartnerPublisher,
 			model.ImportOptout,

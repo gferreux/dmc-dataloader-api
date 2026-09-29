@@ -36,13 +36,11 @@ func TestTemplatesCoverProductMatrix(t *testing.T) {
 	}
 
 	optin := byKind["publisher/optin"]
-	assert.False(t, optin.NeedsConfirmation)
 	assertRequired(t, optin, "mobile_phone", "optin_sms", "collect_date", "collect_url")
 	assertColumnType(t, optin, "birth_date", model.BQDate)
 	assertColumnType(t, optin, "email", model.BQString)
 
 	customers := byKind["advertiser/customers"]
-	assert.False(t, customers.NeedsConfirmation)
 	assertRequired(t, customers, "mobile_phone", "optin_sms", "collect_date", "collect_url")
 	assertColumnType(t, customers, "country", model.BQString)
 	assertColumnType(t, customers, "additional_fields", model.BQJSON)
@@ -62,14 +60,15 @@ func TestTemplatesCoverProductMatrix(t *testing.T) {
 	assertColumnType(t, stores, "longitude", model.BQFloat)
 
 	optout := byKind["publisher/optout"]
-	assert.True(t, optout.NeedsConfirmation)
-	assert.NotEmpty(t, optout.ConfirmationNote)
-	assertRequired(t, optout, "mobile_phone", "optout_date")
+	assertRequired(t, optout, "sha256_mobile_phone")
+	assertColumnType(t, optout, "sha256_mobile_phone", model.BQString)
+	require.Len(t, optout.Columns, 1)
 
 	blacklists := byKind["advertiser/blacklists"]
-	assert.True(t, blacklists.NeedsConfirmation)
-	assert.NotEmpty(t, blacklists.ConfirmationNote)
-	assertRequired(t, blacklists, "mobile_phone")
+	assertRequired(t, blacklists, "sha256_mobile_phone")
+	assertColumnType(t, blacklists, "sha256_mobile_phone", model.BQString)
+	require.Len(t, blacklists.Columns, 1)
+	assert.Equal(t, optout.Columns, blacklists.Columns)
 	assert.Equal(t, "blacklists", blacklists.Defaults.Destination.TableID)
 }
 

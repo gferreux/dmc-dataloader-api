@@ -78,6 +78,18 @@ func defaults(
 	}
 }
 
+func sha256MobileColumns() []model.TemplateColumn {
+	return []model.TemplateColumn{
+		col(
+			"sha256_mobile_phone",
+			model.BQString,
+			"SHA-256 hash of the mobile phone.",
+			"",
+			true,
+		),
+	}
+}
+
 func mappingsFor(columns []model.TemplateColumn) map[string]model.Mapping {
 	mappings := make(map[string]model.Mapping, len(columns))
 	for _, column := range columns {

@@ -24,7 +24,8 @@ func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, fu
 	if err != nil {
 		return nil, nil, err
 	}
-	loadConfigUsecase := loadconfig.NewUsecase(repository)
+	logger := loadconfig.ProvideLogger()
+	loadConfigUsecase := loadconfig.NewUsecase(repository, logger)
 	handler := loadconfig2.NewHandler(loadConfigUsecase)
 	authenticator, err := auth.NewAuthenticator(appConfig)
 	if err != nil {

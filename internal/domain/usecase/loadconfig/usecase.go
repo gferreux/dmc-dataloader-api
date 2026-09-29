@@ -4,6 +4,7 @@ package loadconfig
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,12 +22,22 @@ const (
 var errPatternTooLong = errors.New("pattern is too long")
 
 type usecase struct {
-	repo port.LoadConfigRepository
+	repo   port.LoadConfigRepository
+	logger *slog.Logger
+}
+
+// ProvideLogger is the process logger used for audit lines.
+func ProvideLogger() *slog.Logger {
+	return slog.Default()
 }
 
 // NewUsecase builds the load_config usecase.
-func NewUsecase(repo port.LoadConfigRepository) port.LoadConfigUsecase {
-	return &usecase{repo: repo}
+func NewUsecase(repo port.LoadConfigRepository, logger *slog.Logger) port.LoadConfigUsecase {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	return &usecase{repo: repo, logger: logger}
 }
 
 func (u *usecase) List(ctx context.Context, filter model.ListFilter) ([]model.LoadConfig, error) {
@@ -86,6 +97,8 @@ func (u *usecase) Create(ctx context.Context, cfg model.LoadConfig) (model.LoadC
 		return model.LoadConfig{}, err
 	}
 
+	u.audit(ctx, "created", created.ID)
+
 	return created.Present(), nil
 }
 
@@ -114,11 +127,28 @@ func (u *usecase) Update(ctx context.Context, id string, cfg model.LoadConfig) (
 		return model.LoadConfig{}, err
 	}
 
+	u.audit(ctx, "updated", updated.ID)
+
 	return updated.Present(), nil
 }
 
 func (u *usecase) Delete(ctx context.Context, id string) error {
-	return u.repo.Delete(ctx, id)
+	if err := u.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	u.audit(ctx, "deleted", id)
+
+	return nil
+}
+
+func (u *usecase) audit(ctx context.Context, action, id string) {
+	u.logger.Info(
+		"load config "+action,
+		"action", action,
+		"id", id,
+		"email", port.PrincipalFrom(ctx).Email,
+	)
 }
 
 func (u *usecase) Validate(ctx context.Context, cfg model.LoadConfig) (model.ValidationReport, error) {

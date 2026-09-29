@@ -356,15 +356,11 @@ components:
         isRequiredPartitionFilter: {type: boolean}
     Template:
       type: object
-      required: [partnerType, importType, label, needsConfirmation, columns, defaults]
+      required: [partnerType, importType, label, columns, defaults]
       properties:
         partnerType: {type: string}
         importType: {type: string}
         label: {type: string}
-        needsConfirmation:
-          type: boolean
-          description: True for opt-out and blacklists, whose columns are not confirmed.
-        confirmationNote: {type: string}
         columns:
           type: array
           items: {$ref: "#/components/schemas/TemplateColumn"}

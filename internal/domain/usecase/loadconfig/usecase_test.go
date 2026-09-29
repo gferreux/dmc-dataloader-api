@@ -1,7 +1,9 @@
 package loadconfig_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -172,7 +174,34 @@ func TestUpdateAndDelete(t *testing.T) {
 func newUsecase() (port.LoadConfigUsecase, *memory.Repository) {
 	repo := memory.NewRepository()
 
-	return loadconfig.NewUsecase(repo), repo
+	return loadconfig.NewUsecase(repo, slog.Default()), repo
+}
+
+func TestMutationsLogIAPEmail(t *testing.T) {
+	t.Parallel()
+
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	repo := memory.NewRepository()
+	uc := loadconfig.NewUsecase(repo, logger)
+	ctx := port.WithPrincipal(context.Background(), port.Principal{Email: "ada@example.com"})
+
+	_, err := uc.Create(ctx, validSales("acme:demo:sales"))
+	require.NoError(t, err)
+
+	updated := validSales("acme:demo:sales")
+	updated.PublisherName = "Renamed"
+	_, err = uc.Update(ctx, "acme:demo:sales", updated)
+	require.NoError(t, err)
+
+	require.NoError(t, uc.Delete(ctx, "acme:demo:sales"))
+
+	logged := logBuffer.String()
+	assert.Contains(t, logged, `"email":"ada@example.com"`)
+	assert.Contains(t, logged, "load config created")
+	assert.Contains(t, logged, "load config updated")
+	assert.Contains(t, logged, "load config deleted")
+	assert.Contains(t, logged, "acme:demo:sales")
 }
 
 func validSales(id string) model.LoadConfig {

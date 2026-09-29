@@ -15,7 +15,7 @@ const iapHeader = "X-Goog-IAP-JWT-Assertion"
 func Authenticate(authn port.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, err := authn.Authenticate(r.Context(), port.Credentials{
+			principal, err := authn.Authenticate(r.Context(), port.Credentials{
 				IAPJWT: r.Header.Get(iapHeader),
 			})
 			if err != nil {
@@ -24,7 +24,8 @@ func Authenticate(authn port.Authenticator) func(http.Handler) http.Handler {
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := port.WithPrincipal(r.Context(), principal)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

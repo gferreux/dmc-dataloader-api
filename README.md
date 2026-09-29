@@ -80,7 +80,7 @@ All config keys use the `DMC_` prefix, with `.` replaced by `_`. A missing confi
 | `DMC_LOG_LEVEL` | `info` |
 | `DMC_LOG_JSON` | `true` when no config file is present |
 
-`auth.mode=none` does not check a user credential. Put IAP or Cloud Run IAM in front of the service. `auth.mode=iap` requires `X-Goog-IAP-JWT-Assertion`. When `DMC_AUTH_IAP_AUDIENCE` is set, that JWT is verified with Google's ID token validator. When the audience is empty, the header only has to be present.
+Cloud Run sits behind Google IAP. Set `DMC_AUTH_MODE=iap` and `DMC_AUTH_IAP_AUDIENCE` to the IAP backend audience (`/projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID`). The API verifies `X-Goog-IAP-JWT-Assertion` and logs that token's email on create, update, and delete. `DMC_AUTH_MODE=none` disables the check for local development. There is no second auth layer.
 
 ## What is stored
 
@@ -108,4 +108,4 @@ These integers are a working table, not a copy of `dmodel`. Confirm them before 
 
 `GET /api/v1/meta` returns the same table. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`) and warnings (overlap of active patterns, unanchored regex, unescaped dots, incremental without `primaryKey`, mode/`incremental` mismatch, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update.
 
-Publisher opt-out and advertiser blacklist templates are placeholders (`needsConfirmation: true`). Customers and stores destination tables are assumed to be `customers` and `stores` in `dkp_dmc_advertisers_raw_eu_dev`.
+Publisher opt-out and advertiser blacklists each use one required STRING column, `sha256_mobile_phone`. Customers and stores destination tables are assumed to be `customers` and `stores` in `dkp_dmc_advertisers_raw_eu_dev`.

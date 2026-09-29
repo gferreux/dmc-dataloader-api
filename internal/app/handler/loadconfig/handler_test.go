@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -117,7 +118,8 @@ func TestTestPatternAndMeta(t *testing.T) {
 
 	templates := perform(http.MethodGet, "/api/v1/templates", nil, handler)
 	require.Equal(t, http.StatusOK, templates.Code)
-	assert.Contains(t, templates.Body.String(), `"needsConfirmation":true`)
+	assert.Contains(t, templates.Body.String(), `"sha256_mobile_phone"`)
+	assert.NotContains(t, templates.Body.String(), "needsConfirmation")
 }
 
 func TestCORSAndBadJSON(t *testing.T) {
@@ -144,9 +146,17 @@ func TestIAPValidatorFailure(t *testing.T) {
 	_, err := authenticator.Authenticate(context.Background(), port.Credentials{IAPJWT: "token"})
 	require.ErrorIs(t, err, model.ErrUnauthenticated)
 
-	present, err := auth.NewIAP("").Authenticate(context.Background(), port.Credentials{IAPJWT: "token"})
+	_, err = auth.NewIAP("").Authenticate(context.Background(), port.Credentials{IAPJWT: "token"})
+	require.ErrorIs(t, err, model.ErrUnauthenticated)
+
+	_, err = auth.NewAuthenticator(model.AppConfig{Auth: model.AuthConfig{Mode: "iap"}})
+	require.Error(t, err)
+
+	none, err := auth.NewAuthenticator(model.AppConfig{Auth: model.AuthConfig{Mode: "none"}})
 	require.NoError(t, err)
-	assert.Equal(t, "iap", present.Subject)
+	principal, err := none.Authenticate(context.Background(), port.Credentials{})
+	require.NoError(t, err)
+	assert.Empty(t, principal.Email)
 }
 
 type denyAuth struct{}
@@ -157,7 +167,7 @@ func (denyAuth) Authenticate(context.Context, port.Credentials) (port.Principal,
 
 func newAPI(authn port.Authenticator) http.Handler {
 	repo := memory.NewRepository()
-	usecase := loadconfig.NewUsecase(repo)
+	usecase := loadconfig.NewUsecase(repo, slog.Default())
 	handler := loadhandler.NewHandler(usecase)
 
 	return app.New(model.AppConfig{

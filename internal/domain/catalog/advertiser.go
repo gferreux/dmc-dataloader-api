@@ -97,21 +97,13 @@ func advertiserStores() model.Template {
 }
 
 func advertiserBlacklists() model.Template {
-	columns := []model.TemplateColumn{
-		col("mobile_phone", model.BQString, "Mobile phone, clear or hashed.", hintMobile, true),
-		col("email", model.BQString, "Email address.", "", false),
-		col("land_phone", model.BQString, "Landline phone.", "", false),
-		col("listed_date", model.BQDate, "Date the entry was added to the blacklist.", hintDate, false),
-	}
+	columns := sha256MobileColumns()
 
 	return model.Template{
-		PartnerType:       model.PartnerAdvertiser,
-		ImportType:        model.ImportBlacklists,
-		Label:             "Advertiser blacklists",
-		NeedsConfirmation: true,
-		ConfirmationNote: "Blacklist columns could not be read from dev Firestore or the loader. " +
-			"Confirm this placeholder with Greg before using it.",
-		Columns: columns,
+		PartnerType: model.PartnerAdvertiser,
+		ImportType:  model.ImportBlacklists,
+		Label:       "Advertiser blacklists",
+		Columns:     columns,
 		Defaults: defaults(
 			model.PartnerAdvertiser,
 			model.ImportBlacklists,

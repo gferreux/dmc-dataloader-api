@@ -36,10 +36,11 @@ type FirestoreConfig struct {
 	Collection string `mapstructure:"collection"  validate:"required"`
 }
 
-// AuthConfig selects the pluggable authenticator.
-// Mode "none" trusts the platform (IAP or Cloud Run IAM) to block anonymous callers.
-// Mode "iap" requires the X-Goog-IAP-JWT-Assertion header and, when IAPAudience is set,
-// verifies that JWT.
+// AuthConfig selects how callers are identified.
+// Mode "none" disables IAP checks for local development.
+// Mode "iap" verifies the X-Goog-IAP-JWT-Assertion header against IAPAudience.
+// IAPAudience is required when mode is iap. It is the audience of the Cloud Run
+// IAP backend, typically /projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID.
 type AuthConfig struct {
 	Mode        string `mapstructure:"mode"         validate:"required,oneof=none iap"`
 	IAPAudience string `mapstructure:"iap_audience"`

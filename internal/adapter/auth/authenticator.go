@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"google.golang.org/api/idtoken"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/port"
 )
 
-// Noop accepts every caller. Use it when IAP or Cloud Run IAM already guards the service.
+// Noop accepts every caller. Use it when IAP verification is disabled for local development.
 type Noop struct{}
 
 // Authenticate implements port.Authenticator.
@@ -22,8 +23,7 @@ func (Noop) Authenticate(context.Context, port.Credentials) (port.Principal, err
 // TokenValidator checks an IAP JWT. Tests inject a fake.
 type TokenValidator func(ctx context.Context, token, audience string) (port.Principal, error)
 
-// IAP authenticates the X-Goog-IAP-JWT-Assertion header.
-// When audience is empty the header must be present but is not verified.
+// IAP verifies the X-Goog-IAP-JWT-Assertion header against the configured audience.
 type IAP struct {
 	audience string
 	validate TokenValidator
@@ -41,12 +41,8 @@ func NewIAPWithValidator(audience string, validate TokenValidator) *IAP {
 
 // Authenticate implements port.Authenticator.
 func (a *IAP) Authenticate(ctx context.Context, creds port.Credentials) (port.Principal, error) {
-	if creds.IAPJWT == "" {
+	if creds.IAPJWT == "" || a.audience == "" {
 		return port.Principal{}, model.ErrUnauthenticated
-	}
-
-	if a.audience == "" {
-		return port.Principal{Subject: "iap"}, nil
 	}
 
 	principal, err := a.validate(ctx, creds.IAPJWT, a.audience)
@@ -68,7 +64,10 @@ func validateIAPToken(ctx context.Context, token, audience string) (port.Princip
 	return port.Principal{Subject: payload.Subject, Email: email}, nil
 }
 
-var errUnsupportedAuthMode = errors.New("unsupported auth mode")
+var (
+	errUnsupportedAuthMode = errors.New("unsupported auth mode")
+	errIAPAudienceRequired = errors.New("iap audience is required when auth mode is iap")
+)
 
 // NewAuthenticator selects the implementation configured for the process.
 func NewAuthenticator(cfg model.AppConfig) (port.Authenticator, error) {
@@ -76,7 +75,12 @@ func NewAuthenticator(cfg model.AppConfig) (port.Authenticator, error) {
 	case "none":
 		return Noop{}, nil
 	case "iap":
-		return NewIAP(cfg.Auth.IAPAudience), nil
+		audience := strings.TrimSpace(cfg.Auth.IAPAudience)
+		if audience == "" {
+			return nil, errIAPAudienceRequired
+		}
+
+		return NewIAP(audience), nil
 	default:
 		return nil, errUnsupportedAuthMode
 	}
