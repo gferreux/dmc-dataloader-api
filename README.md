@@ -106,7 +106,7 @@ The console sends four inputs: `kind` (`advertiser` or `publisher`), `organizati
 
 `slug(x)` lowercases, trims, strips accents, turns spaces and `-` into `_`, and keeps `[a-z0-9_]`. An empty slug is rejected. The document id and `publisherName` are `{slug(organization)}:{slug(nested)}:{fileType}`, for example `bigmat_france:bigmat:sales`. Create returns 409 when that id exists.
 
-Patterns are anchored. `TS` is `[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z` and `EXT` is `[.](csv|zip|gz|gzip|tgz|tar\.gz|7z)`.
+Patterns are unanchored, matching the documents already in `load_config`. `TS` is `[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z` and `EXT` is `[.](csv|zip|gz|gzip|tgz|tar.gz|7z)`. Derive does not warn about that shape. `POST /api/v1/load-configs/validate` still reports an unanchored regex or an unescaped dot when a document is checked as stored.
 
 - Advertiser preprocess: `{ADV_RAW}/{org}/{nested}/{fileType}/.+EXT`
 - Advertiser ingest: `{ADV_STAGING}/data/{TS}/{org}/{nested}/{fileType}/.+`

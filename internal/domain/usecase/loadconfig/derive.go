@@ -2,6 +2,7 @@ package loadconfig
 
 import (
 	"context"
+	"strings"
 
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
 )
@@ -105,9 +106,29 @@ func collectWarnings(cfg model.LoadConfig, others []model.LoadConfig) []model.Fi
 		}
 	}
 
-	if check.report.Warnings == nil {
-		return []model.FieldIssue{}
+	return withoutGeneratedPatternAdvice(check.report.Warnings)
+}
+
+// withoutGeneratedPatternAdvice drops the anchor and unescaped-dot notes.
+// Generated patterns are unanchored and use the stored `tar.gz` group on purpose.
+func withoutGeneratedPatternAdvice(warnings []model.FieldIssue) []model.FieldIssue {
+	kept := make([]model.FieldIssue, 0, len(warnings))
+	for _, warning := range warnings {
+		if generatedPatternAdvice(warning) {
+			continue
+		}
+
+		kept = append(kept, warning)
 	}
 
-	return check.report.Warnings
+	return kept
+}
+
+func generatedPatternAdvice(warning model.FieldIssue) bool {
+	if warning.Field != "patterns.preprocess" && warning.Field != "patterns.ingest" {
+		return false
+	}
+
+	return strings.HasPrefix(warning.Message, "regex is unanchored") ||
+		strings.HasPrefix(warning.Message, "regex has an unescaped dot")
 }

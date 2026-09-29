@@ -30,6 +30,27 @@ func TestDeriveAdvertiserFromDirectory(t *testing.T) {
 	assert.Empty(t, derived.Warnings)
 }
 
+func TestValidateStillFlagsUnanchoredStoredPatterns(t *testing.T) {
+	t.Parallel()
+
+	uc, _, _ := newUsecase()
+	built, err := model.BuildDerived(model.Identity{
+		Kind:             model.PartnerAdvertiser,
+		OrganizationName: "Acme",
+		NestedName:       "demo",
+		FileType:         model.ImportSales,
+	}, model.DevDeriveConfig())
+	require.NoError(t, err)
+
+	cfg := validSales(built.ID)
+	cfg.Patterns = built.Patterns
+	report, err := uc.Validate(context.Background(), cfg)
+	require.NoError(t, err)
+	assert.Empty(t, report.Errors)
+	assertWarning(t, report, "patterns.preprocess")
+	assertWarning(t, report, "patterns.ingest")
+}
+
 func TestDerivePublisherAccountIsEmpty(t *testing.T) {
 	t.Parallel()
 

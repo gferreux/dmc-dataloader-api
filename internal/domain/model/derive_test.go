@@ -52,11 +52,22 @@ func TestBuildDerivedPatterns(t *testing.T) {
 	assert.Equal(t, "dkp-dmc-data-loader-notifications-dev", advertiser.Notification.TopicID)
 	assert.Nil(t, advertiser.Organization.Account)
 	assert.Equal(t, model.OrganizationTypeAdvertiser, advertiser.Organization.Type)
+	assert.Equal(t,
+		"dkp-dmc-advertisers-raw-euw1-dev/bigmat_france/bigmat/sales/.+[.](csv|zip|gz|gzip|tgz|tar.gz|7z)",
+		advertiser.Patterns.Preprocess,
+	)
+	assert.Equal(t,
+		"dkp-dmc-advertisers-staging-euw1-dev/data/[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z/bigmat_france/bigmat/sales/.+",
+		advertiser.Patterns.Ingest,
+	)
+	assert.NotContains(t, advertiser.Patterns.Preprocess, "^")
+	assert.NotContains(t, advertiser.Patterns.Ingest, "$")
 
 	preprocess := regexp.MustCompile(advertiser.Patterns.Preprocess)
 	for _, ext := range []string{"csv", "zip", "gz", "gzip", "tgz", "tar.gz", "7z"} {
 		path := "dkp-dmc-advertisers-raw-euw1-dev/bigmat_france/bigmat/sales/orders." + ext
 		assert.True(t, preprocess.MatchString(path), ext)
+		assert.True(t, preprocess.MatchString("gs://"+path), "gs:// "+ext)
 	}
 
 	assert.False(t, preprocess.MatchString(
@@ -67,9 +78,9 @@ func TestBuildDerivedPatterns(t *testing.T) {
 	))
 
 	ingest := regexp.MustCompile(advertiser.Patterns.Ingest)
-	assert.True(t, ingest.MatchString(
-		"dkp-dmc-advertisers-staging-euw1-dev/data/2024-06-01T12:00:00Z/bigmat_france/bigmat/sales/orders.csv",
-	))
+	staged := "dkp-dmc-advertisers-staging-euw1-dev/data/2024-06-01T12:00:00Z/bigmat_france/bigmat/sales/orders.csv"
+	assert.True(t, ingest.MatchString(staged))
+	assert.True(t, ingest.MatchString("gs://"+staged))
 	assert.False(t, ingest.MatchString(
 		"dkp-dmc-advertisers-staging-euw1-dev/data/2024-06-01T12:00:00Z/bigmat_france/bigmat/customers/orders.csv",
 	))
@@ -87,6 +98,14 @@ func TestBuildDerivedPatterns(t *testing.T) {
 	assert.Equal(t, "dkp_dmc_publishers_raw_eu_dev", publisher.Destination.DatasetID)
 	require.NotNil(t, publisher.Organization.Account)
 	assert.Empty(t, *publisher.Organization.Account)
+	assert.Equal(t,
+		"dkp-dmc-publishers-raw-euw1-dev/ciblexo/lissac/optin/.+[.](csv|zip|gz|gzip|tgz|tar.gz|7z)",
+		publisher.Patterns.Preprocess,
+	)
+	assert.Equal(t,
+		"dkp-dmc-publishers-staging-euw1-dev/data/[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z/ciblexo/lissac/optin/.+",
+		publisher.Patterns.Ingest,
+	)
 
 	parsed, ok := model.ParseIdentity(publisher)
 	require.True(t, ok)

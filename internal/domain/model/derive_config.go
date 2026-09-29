@@ -36,7 +36,9 @@ type DestinationSettings struct {
 }
 
 const (
-	extPattern = `[.](csv|zip|gz|gzip|tgz|tar\.gz|7z)`
+	// extPattern matches the extension group already stored on load_config.
+	// The dot in tar.gz is left unescaped so the generated string matches those documents.
+	extPattern = `[.](csv|zip|gz|gzip|tgz|tar.gz|7z)`
 	tsPattern  = `[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z`
 
 	defaultAdvertiserRawBucket     = "dkp-dmc-advertisers-raw-euw1-dev"
@@ -196,12 +198,14 @@ func (c PartnerDeriveConfig) tableID(identity Identity) (string, error) {
 func preprocessPattern(bucket, orgSlug, nestedSlug, fileType string) string {
 	prefix := bucket + "/" + orgSlug + "/" + nestedSlug + "/" + fileType + "/"
 
-	return "^" + regexp.QuoteMeta(prefix) + ".+" + extPattern + "$"
+	// Unanchored on purpose. Existing load_config patterns have no ^ or $, and the
+	// loader may match a gs://-prefixed path.
+	return regexp.QuoteMeta(prefix) + ".+" + extPattern
 }
 
 func ingestPattern(bucket, orgSlug, nestedSlug, fileType string) string {
 	head := bucket + "/data/"
 	tail := "/" + orgSlug + "/" + nestedSlug + "/" + fileType + "/"
 
-	return "^" + regexp.QuoteMeta(head) + tsPattern + regexp.QuoteMeta(tail) + ".+$"
+	return regexp.QuoteMeta(head) + tsPattern + regexp.QuoteMeta(tail) + ".+"
 }

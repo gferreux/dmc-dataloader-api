@@ -440,9 +440,16 @@ components:
           additionalProperties: {$ref: "#/components/schemas/Mapping"}
     Patterns:
       type: object
+      description: |
+        Generated patterns are unanchored, matching existing load_config documents.
+        A leading `gs://` must still be able to match.
       properties:
-        preprocess: {type: string}
-        ingest: {type: string}
+        preprocess:
+          type: string
+          example: dkp-dmc-advertisers-raw-euw1-dev/gadol/lissac/sales/.+[.](csv|zip|gz|gzip|tgz|tar.gz|7z)
+        ingest:
+          type: string
+          example: dkp-dmc-advertisers-staging-euw1-dev/data/[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z/gadol/lissac/sales/.+
     Destination:
       type: object
       required: [projectId, datasetId, tableId]
