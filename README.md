@@ -1,6 +1,6 @@
 # dmc-dataloader-api
 
-HTTP API for the dmc-data-loader console. It creates, updates, and deletes `load_config` documents in Firestore. dmc-data-loader still owns ingestion: for each dropped file it walks `load_config` and uses the first active document whose `patterns.preprocess` or `patterns.ingest` regex matches `bucket/objectName`.
+HTTP API for the dmc-data-loader console. It creates, updates, and deletes `load_config` documents in Firestore. dmc-data-loader still owns ingestion: for each dropped file it walks `load_config` in document id order and uses the first document whose `patterns.preprocess` or `patterns.ingest` regex matches `bucket/objectName`.
 
 The contract shared with the Angular console is in [`api/openapi.yaml`](api/openapi.yaml).
 
@@ -84,28 +84,31 @@ Cloud Run sits behind Google IAP. Set `DMC_AUTH_MODE=iap` and `DMC_AUTH_IAP_AUDI
 
 ## What is stored
 
-Documents stay compatible with the loader's decode:
+The stored shape mirrors `dekuple-labs/dmc-domain/pkg/model/data_loader_config.go` (organization types from `pkg/model/organization_type.go`):
 
 - Field names are the Firestore names (`publisherName`, `bqParams`, `mappings.<column>.src`, …).
-- `id`, `createTime`, and `updateTime` are document metadata, not fields.
-- `partnerType` and `importType` are computed on read and tagged `firestore:"-"` so they are not written. They could not be confirmed as harmless extra fields because `github.com/dekuple-labs/dmc-domain` was not fetchable.
+- `bqParams.sourceFormat` is the integer `0` (CSV) or `1` (JSON).
+- `organization.account` and `bqParams.nullMarker` are nullable.
+- `id`, `createTime`, and `updateTime` are document metadata, not fields. They stand in for `DocumentHeader`.
+- `partnerType` and `importType` are computed on read and tagged `firestore:"-"` so they are not written.
+- Updates keep document fields the struct does not declare (`deactivated`, `incremental`, `mappings.<column>.isPartitionKey`, and any other extra). A mapping column left out of the body is removed.
 
-`partnerType` comes from `organization.type` when that value is `publisher` or `advertiser`, otherwise from `destination.datasetId`, otherwise from the import kind. `importType` prefers the last segment of the document id (`acme:demo:sales`) and otherwise uses `destination.tableId` (`profiles` is publisher opt-in).
+`organization.type` writes must be `advertiser` or `publisher`. List and read still return `referential` when a stored document has it. `partnerType` comes from `organization.type` when that value is `publisher` or `advertiser`, otherwise from `destination.datasetId`, otherwise from the import kind. `importType` prefers the last segment of the document id (`acme:demo:sales`) and otherwise uses `destination.tableId` (`profiles` is publisher opt-in).
 
 ## Mapping types
 
-These integers are a working table, not a copy of `dmodel`. Confirm them before production writes.
+These are the domain iota values. `GET /api/v1/meta` returns the same rows. Template mappings that copy a CSV column use `0` (`RENAME`). The BigQuery column type on a template (`STRING`, `DATE`, …) is separate from this integer.
 
-| value | label | BigQuery type |
-|---|---|---|
-| 0 | STRING | STRING |
-| 1 | INTEGER | INTEGER |
-| 2 | FLOAT | FLOAT |
-| 3 | BOOLEAN | BOOLEAN |
-| 4 | TIMESTAMP | TIMESTAMP |
-| 5 | DATE | DATE |
-| 6 | JSON | JSON |
+| value | label |
+|---|---|
+| 0 | RENAME |
+| 1 | SQL |
+| 2 | PREFIX_PATTERN |
+| 3 | CUSTOM |
+| 4 | EXTRA_FIELDS |
+| 5 | MISSING_MAPPINGS |
+| 6 | ARRAY |
 
-`GET /api/v1/meta` returns the same table. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`) and warnings (overlap of active patterns, unanchored regex, unescaped dots, incremental without `primaryKey`, mode/`incremental` mismatch, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update.
+`7` is ND and is rejected. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`, `organization.type` other than advertiser or publisher) and warnings (overlap with another config, unanchored regex, unescaped dots, `INCREMENTAL` without `primaryKey`, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update. Overlap and test-pattern follow document id order, which is the loader's iteration order.
 
 Publisher opt-out and advertiser blacklists each use one required STRING column, `sha256_mobile_phone`. Customers and stores destination tables are assumed to be `customers` and `stores` in `dkp_dmc_advertisers_raw_eu_dev`.

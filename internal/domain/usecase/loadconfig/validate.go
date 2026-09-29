@@ -12,6 +12,7 @@ func review(cfg model.LoadConfig, others []model.LoadConfig) model.ValidationRep
 	report := model.EmptyReport()
 	check := &checker{report: report}
 	check.identity(cfg)
+	check.organization(cfg)
 	check.patterns(cfg)
 	check.destination(cfg)
 	check.params(cfg)
@@ -105,12 +106,20 @@ func (c *checker) destination(cfg model.LoadConfig) {
 	}
 }
 
-func (c *checker) params(cfg model.LoadConfig) {
-	switch cfg.BQParams.SourceFormat {
-	case model.SourceFormatCSV, model.SourceFormatJSON:
-	default:
-		c.error("bqParams.sourceFormat", "sourceFormat must be CSV or NEWLINE_DELIMITED_JSON")
+func (c *checker) organization(cfg model.LoadConfig) {
+	if cfg.Organization.Type.Valid() {
+		return
 	}
+
+	c.error("organization.type", "organization.type must be advertiser or publisher")
+}
+
+func (c *checker) params(cfg model.LoadConfig) {
+	if cfg.BQParams.SourceFormat.Valid() {
+		return
+	}
+
+	c.error("bqParams.sourceFormat", "sourceFormat must be 0 (CSV) or 1 (JSON)")
 }
 
 func (c *checker) mappings(cfg model.LoadConfig) {
@@ -124,23 +133,14 @@ func (c *checker) mappings(cfg model.LoadConfig) {
 			c.error(field+".src", "src is required")
 		}
 
-		if mapping.Type == nil {
-			c.error(field+".type", "type is required")
-
-			continue
-		}
-
 		if !mapping.Type.Valid() {
-			c.error(field+".type", "type must be an integer from 0 to 6")
+			c.error(field+".type", "type must be 0 RENAME, 1 SQL, 2 PREFIX_PATTERN, 3 CUSTOM, "+
+				"4 EXTRA_FIELDS, 5 MISSING_MAPPINGS, or 6 ARRAY")
 		}
 	}
 }
 
 func (c *checker) notification(cfg model.LoadConfig) {
-	if cfg.Notification == nil {
-		return
-	}
-
 	hasProject := cfg.Notification.ProjectID != ""
 
 	hasTopic := cfg.Notification.TopicID != ""

@@ -74,7 +74,7 @@ func (r *Repository) Get(ctx context.Context, id string) (model.LoadConfig, erro
 
 // Create fails when the document id already exists.
 func (r *Repository) Create(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error) {
-	_, err := r.client.Collection(r.collection).Doc(cfg.ID).Create(ctx, cfg)
+	_, err := r.client.Collection(r.collection).Doc(cfg.ID).Create(ctx, documentData(cfg))
 	if status.Code(err) == codes.AlreadyExists {
 		return model.LoadConfig{}, model.ErrConflict
 	}
@@ -86,12 +86,14 @@ func (r *Repository) Create(ctx context.Context, cfg model.LoadConfig) (model.Lo
 	return r.Get(ctx, cfg.ID)
 }
 
-// Update replaces the document. Merge is not used, so removed mappings disappear.
+// Update replaces modeled fields and keeps every document field the struct does not declare.
+// Removed mapping columns are dropped. Unknown fields on a mapping that remains, such as
+// isPartitionKey, are kept.
 func (r *Repository) Update(ctx context.Context, cfg model.LoadConfig) (model.LoadConfig, error) {
 	ref := r.client.Collection(r.collection).Doc(cfg.ID)
 
 	err := r.client.RunTransaction(ctx, func(_ context.Context, tx *gfs.Transaction) error {
-		_, err := tx.Get(ref)
+		snap, err := tx.Get(ref)
 		if status.Code(err) == codes.NotFound {
 			return model.ErrNotFound
 		}
@@ -100,7 +102,7 @@ func (r *Repository) Update(ctx context.Context, cfg model.LoadConfig) (model.Lo
 			return err
 		}
 
-		return tx.Set(ref, cfg)
+		return tx.Set(ref, mergePreservingUnknown(snap.Data(), documentData(cfg)))
 	})
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) || status.Code(err) == codes.NotFound {

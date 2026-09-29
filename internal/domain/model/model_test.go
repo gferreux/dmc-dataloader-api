@@ -11,21 +11,33 @@ import (
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
 )
 
-func TestMappingTypesAreZeroThroughSix(t *testing.T) {
+func TestMappingTypesMatchDomain(t *testing.T) {
 	t.Parallel()
 
+	labels := []string{
+		"RENAME",
+		"SQL",
+		"PREFIX_PATTERN",
+		"CUSTOM",
+		"EXTRA_FIELDS",
+		"MISSING_MAPPINGS",
+		"ARRAY",
+	}
 	infos := model.MappingTypes()
-	require.Len(t, infos, 7)
+	require.Len(t, infos, len(labels))
 	for i, info := range infos {
 		assert.Equal(t, model.MappingType(i), info.Value)
+		assert.Equal(t, labels[i], info.Label)
 		assert.True(t, info.Value.Valid())
-		assert.Equal(t, info.BQType, info.Label)
-		parsed, ok := model.MappingTypeFromBQ(info.BQType)
-		assert.True(t, ok)
-		assert.Equal(t, info.Value, parsed)
 	}
 
 	assert.False(t, model.MappingType(7).Valid())
+	assert.Equal(t, model.SourceFormat(0), model.SourceFormatCSV)
+	assert.Equal(t, model.SourceFormat(1), model.SourceFormatJSON)
+	assert.True(t, model.SourceFormatCSV.Valid())
+	assert.False(t, model.SourceFormat(2).Valid())
+	assert.True(t, model.OrganizationTypeAdvertiser.Valid())
+	assert.False(t, model.OrganizationType("referential").Valid())
 }
 
 func TestClassify(t *testing.T) {
@@ -51,8 +63,18 @@ func TestClassify(t *testing.T) {
 	assert.Equal(t, model.ImportOptin, importType)
 
 	partner, importType = model.Classify(model.LoadConfig{
-		Organization: &model.Organization{Type: "retail"},
+		Organization: model.Organization{Type: "retail"},
 		Destination:  model.Destination{TableID: "fr_robinson"},
+	})
+	assert.Empty(t, partner)
+	assert.Empty(t, importType)
+
+	partner, importType = model.Classify(model.LoadConfig{
+		Organization: model.Organization{Type: "referential"},
+		Destination: model.Destination{
+			DatasetID: "dmc_raw_referentials_eu_dev",
+			TableID:   "fr_robinson",
+		},
 	})
 	assert.Empty(t, partner)
 	assert.Empty(t, importType)

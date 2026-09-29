@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/httpx"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
@@ -42,19 +41,10 @@ type testPatternRequest struct {
 
 // List handles GET /api/v1/load-configs.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	include, ok := parseBool(r.URL.Query().Get("includeDeactivated"))
-	if !ok {
-		httpx.WriteError(w, http.StatusBadRequest, "bad_request",
-			"includeDeactivated must be true, false, 1, or 0", nil)
-
-		return
-	}
-
 	items, err := h.usecase.List(r.Context(), model.ListFilter{
-		PartnerType:        r.URL.Query().Get("partnerType"),
-		ImportType:         r.URL.Query().Get("importType"),
-		Query:              r.URL.Query().Get("q"),
-		IncludeDeactivated: include,
+		PartnerType: r.URL.Query().Get("partnerType"),
+		ImportType:  r.URL.Query().Get("importType"),
+		Query:       r.URL.Query().Get("q"),
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -204,15 +194,4 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	}
 
 	return true
-}
-
-func parseBool(raw string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "false", "0", "no":
-		return false, true
-	case "true", "1", "yes":
-		return true, true
-	default:
-		return false, false
-	}
 }

@@ -23,15 +23,13 @@ func TestTemplatesCoverProductMatrix(t *testing.T) {
 		assert.Equal(t, item.ImportType, item.Defaults.ImportType)
 		assert.Equal(t, model.ModeAppend, item.Defaults.Mode)
 		assert.Equal(t, model.SourceFormatCSV, item.Defaults.BQParams.SourceFormat)
+		assert.Equal(t, model.OrganizationType(item.PartnerType), item.Defaults.Organization.Type)
 		require.NotEmpty(t, item.Columns)
 		for _, column := range item.Columns {
 			mapping, ok := item.Defaults.Mappings[column.Name]
 			require.True(t, ok, column.Name)
 			assert.Equal(t, column.Name, mapping.Src)
-			require.NotNil(t, mapping.Type)
-			expected, ok := model.MappingTypeFromBQ(column.BQType)
-			require.True(t, ok, column.BQType)
-			assert.Equal(t, expected, *mapping.Type)
+			assert.Equal(t, model.MappingTypeRename, mapping.Type)
 		}
 	}
 
@@ -77,8 +75,14 @@ func TestMetaMappingTable(t *testing.T) {
 
 	meta := catalog.Meta()
 	require.Len(t, meta.MappingTypes, 7)
-	assert.Equal(t, model.MappingTypeString, meta.MappingTypes[0].Value)
-	assert.Equal(t, model.BQJSON, meta.MappingTypes[6].Label)
+	assert.Equal(t, model.MappingTypeRename, meta.MappingTypes[0].Value)
+	assert.Equal(t, "RENAME", meta.MappingTypes[0].Label)
+	assert.Equal(t, "ARRAY", meta.MappingTypes[6].Label)
+	require.Len(t, meta.SourceFormats, 2)
+	assert.Equal(t, model.SourceFormatCSV, meta.SourceFormats[0].Value)
+	assert.Equal(t, "CSV", meta.SourceFormats[0].Label)
+	assert.Equal(t, model.SourceFormatJSON, meta.SourceFormats[1].Value)
+	assert.Equal(t, "JSON", meta.SourceFormats[1].Label)
 	assert.Equal(t, []string{model.ImportOptin, model.ImportOptout}, meta.ImportTypes[model.PartnerPublisher])
 	assert.Equal(t, []string{
 		model.ImportBlacklists, model.ImportCustomers, model.ImportStores, model.ImportSales,

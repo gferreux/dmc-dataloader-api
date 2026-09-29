@@ -22,7 +22,7 @@ type TemplateColumn struct {
 type Meta struct {
 	Modes         []LoadMode          `json:"modes"`
 	MappingTypes  []MappingTypeInfo   `json:"mappingTypes"`
-	SourceFormats []string            `json:"sourceFormats"`
+	SourceFormats []SourceFormatInfo  `json:"sourceFormats"`
 	PartnerTypes  []string            `json:"partnerTypes"`
 	ImportTypes   map[string][]string `json:"importTypes"`
 }

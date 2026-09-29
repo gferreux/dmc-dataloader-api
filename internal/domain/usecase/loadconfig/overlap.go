@@ -81,19 +81,8 @@ func hasUnescapedDot(pattern string) bool {
 }
 
 func (c *checker) warnMode(cfg model.LoadConfig) {
-	incrementalSet := cfg.Incremental != nil
-
-	incremental := incrementalSet && *cfg.Incremental
-	if incremental && cfg.Mode != model.ModeIncremental {
-		c.warn("incremental", "incremental is true while mode is "+string(cfg.Mode))
-	}
-
-	if incrementalSet && !incremental && cfg.Mode == model.ModeIncremental {
-		c.warn("mode", "mode is INCREMENTAL while incremental is false")
-	}
-
-	if (cfg.Mode == model.ModeIncremental || incremental) && !cfg.HasPrimaryKey() {
-		c.warn("mappings", "incremental loads need a mapping with primaryKey set")
+	if cfg.Mode == model.ModeIncremental && !cfg.HasPrimaryKey() {
+		c.warn("mappings", "INCREMENTAL loads need a mapping with primaryKey set")
 	}
 }
 
@@ -156,18 +145,14 @@ func importFromTable(tableID string) string {
 }
 
 func (c *checker) warnOverlaps(cfg model.LoadConfig, others []model.LoadConfig) {
-	if cfg.Deactivated {
-		return
-	}
-
 	for _, other := range others {
-		if other.Deactivated || other.ID == cfg.ID {
+		if other.ID == cfg.ID {
 			continue
 		}
 
 		if patternsOverlap(cfg, other) {
 			c.warn("patterns",
-				"overlaps active config "+other.ID+"; the loader keeps the first matching document")
+				"overlaps config "+other.ID+"; the loader keeps the first match in document id order")
 		}
 	}
 }

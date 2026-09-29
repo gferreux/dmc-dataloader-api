@@ -30,15 +30,11 @@ func Classify(cfg LoadConfig) (string, string) {
 	return partner, importType
 }
 
-func partnerFromOrganization(org *Organization) string {
-	if org == nil {
-		return ""
-	}
-
-	switch strings.ToLower(org.Type) {
-	case PartnerPublisher:
+func partnerFromOrganization(org Organization) string {
+	switch org.Type {
+	case OrganizationTypePublisher:
 		return PartnerPublisher
-	case PartnerAdvertiser:
+	case OrganizationTypeAdvertiser:
 		return PartnerAdvertiser
 	default:
 		return ""

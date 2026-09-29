@@ -53,10 +53,6 @@ func (u *usecase) List(ctx context.Context, filter model.ListFilter) ([]model.Lo
 	items := make([]model.LoadConfig, 0, len(configs))
 	for _, cfg := range configs {
 		presented := cfg.Present()
-		if !filter.IncludeDeactivated && presented.Deactivated {
-			continue
-		}
-
 		if filter.PartnerType != "" && presented.PartnerType != filter.PartnerType {
 			continue
 		}
@@ -189,10 +185,6 @@ func (u *usecase) TestPattern(ctx context.Context, pattern, path string) (model.
 	result := model.PatternTest{Matches: compiled.MatchString(path)}
 
 	for _, cfg := range configs {
-		if cfg.Deactivated {
-			continue
-		}
-
 		if configMatches(cfg, path) {
 			id := cfg.ID
 			result.MatchingConfigID = &id
@@ -244,9 +236,11 @@ func matchesQuery(cfg model.LoadConfig, query string) bool {
 		cfg.Destination.TableID,
 		cfg.Patterns.Preprocess,
 		cfg.Patterns.Ingest,
+		cfg.Organization.ID,
+		string(cfg.Organization.Type),
 	}
-	if cfg.Organization != nil {
-		haystack = append(haystack, cfg.Organization.ID, cfg.Organization.Account, cfg.Organization.Type)
+	if cfg.Organization.Account != nil {
+		haystack = append(haystack, *cfg.Organization.Account)
 	}
 
 	for _, value := range haystack {

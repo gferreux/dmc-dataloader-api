@@ -68,6 +68,7 @@ func defaults(
 			DatasetID: dataset,
 			TableID:   table,
 		},
+		Organization: model.Organization{Type: model.OrganizationType(partner)},
 		BQParams: model.BQParams{
 			FieldDelimiter:  ",",
 			SkipLeadingRows: 1,
@@ -93,14 +94,9 @@ func sha256MobileColumns() []model.TemplateColumn {
 func mappingsFor(columns []model.TemplateColumn) map[string]model.Mapping {
 	mappings := make(map[string]model.Mapping, len(columns))
 	for _, column := range columns {
-		mappingType, ok := model.MappingTypeFromBQ(column.BQType)
-		if !ok {
-			continue
-		}
-
 		mappings[column.Name] = model.Mapping{
 			Src:  column.Name,
-			Type: model.MappingTypePtr(mappingType),
+			Type: model.MappingTypeRename,
 		}
 	}
 

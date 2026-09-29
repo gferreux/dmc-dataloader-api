@@ -60,6 +60,8 @@ func TestCRUDAndRouting(t *testing.T) {
 	decode(t, got, &body)
 	assert.Equal(t, "acme:demo:sales", body.ID)
 	assert.Equal(t, model.ImportSales, body.ImportType)
+	assert.Equal(t, model.SourceFormatCSV, body.BQParams.SourceFormat)
+	assert.Contains(t, got.Body.String(), `"sourceFormat":0`)
 
 	invalid := perform(http.MethodPost, "/api/v1/load-configs", model.LoadConfig{ID: "bad id"}, handler)
 	assert.Equal(t, http.StatusUnprocessableEntity, invalid.Code)
@@ -114,7 +116,10 @@ func TestTestPatternAndMeta(t *testing.T) {
 
 	meta := perform(http.MethodGet, "/api/v1/meta", nil, handler)
 	require.Equal(t, http.StatusOK, meta.Code)
-	assert.Contains(t, meta.Body.String(), `"mappingTypes"`)
+	assert.Contains(t, meta.Body.String(), `"RENAME"`)
+	assert.Contains(t, meta.Body.String(), `"ARRAY"`)
+	assert.Contains(t, meta.Body.String(), `"sourceFormats"`)
+	assert.NotContains(t, meta.Body.String(), `"bqType"`)
 
 	templates := perform(http.MethodGet, "/api/v1/templates", nil, handler)
 	require.Equal(t, http.StatusOK, templates.Code)
@@ -226,9 +231,10 @@ func validSales(id string) model.LoadConfig {
 			DatasetID: "dkp_dmc_advertisers_raw_eu_dev",
 			TableID:   "sales",
 		},
-		BQParams: model.BQParams{SourceFormat: model.SourceFormatCSV, FieldDelimiter: ","},
+		Organization: model.Organization{Type: model.OrganizationTypeAdvertiser},
+		BQParams:     model.BQParams{SourceFormat: model.SourceFormatCSV, FieldDelimiter: ","},
 		Mappings: map[string]model.Mapping{
-			"order_id": {Src: "order_id", Type: model.MappingTypePtr(model.MappingTypeString)},
+			"order_id": {Src: "order_id", Type: model.MappingTypeRename},
 		},
 	}
 }

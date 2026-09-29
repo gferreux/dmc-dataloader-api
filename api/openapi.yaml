@@ -5,17 +5,25 @@ info:
   description: |
     Console API for dmc-data-loader `load_config` documents.
 
-    Persisted JSON matches the Firestore document. `id` is the document id.
-    `createTime` and `updateTime` are Firestore snapshot metadata.
-    `partnerType` and `importType` are derived and are not written.
+    Persisted JSON matches the Firestore document described by
+    `dekuple-labs/dmc-domain/pkg/model/data_loader_config.go`.
+    `id` is the document id. `createTime` and `updateTime` are Firestore
+    snapshot metadata. `partnerType` and `importType` are derived and are not written.
 
-    Mapping `type` integers 0-6 are a working table (STRING, INTEGER, FLOAT,
-    BOOLEAN, TIMESTAMP, DATE, JSON). They were not confirmed against
-    `dmodel.LoadConfig` because that module was not available here.
+    Mapping `type` is the domain iota: 0 RENAME, 1 SQL, 2 PREFIX_PATTERN,
+    3 CUSTOM, 4 EXTRA_FIELDS, 5 MISSING_MAPPINGS, 6 ARRAY. 7 (ND) is invalid.
+    `bqParams.sourceFormat` is the integer 0 (CSV) or 1 (JSON).
 
-    The loader's first-match order is approximated by ascending document id,
-    skipping deactivated configs. A config matches a `bucket/objectName` path
-    when either `patterns.preprocess` or `patterns.ingest` matches.
+    The loader walks the collection in Firestore's default order, which is
+    document id ascending, and keeps the first document whose
+    `patterns.preprocess` or `patterns.ingest` matches `bucket/objectName`.
+
+    PUT replaces modeled fields and preserves any other document fields
+    (`deactivated`, `incremental`, `mappings.<column>.isPartitionKey`, and
+    anything else this API does not declare). `organization.account` and
+    `bqParams.nullMarker` are nullable. `organization.type` values other than
+    `advertiser` and `publisher` (including `referential`) can be read and are
+    rejected on create and update.
 servers:
   - url: /
 tags:
@@ -47,10 +55,6 @@ paths:
           name: q
           schema: {type: string}
           description: Case-insensitive match on id, names, destination, and patterns.
-        - in: query
-          name: includeDeactivated
-          schema: {type: boolean, default: false}
-          description: When false or omitted, deactivated configs are hidden.
       responses:
         "200":
           description: Matching configs
@@ -157,6 +161,11 @@ paths:
     put:
       tags: [load-configs]
       summary: Replace one load config
+      description: |
+        Modeled fields are replaced. Document fields this API does not model
+        are left in place, including `deactivated`, `incremental`, and
+        `isPartitionKey` inside a mapping that is still present. A mapping
+        column omitted from the body is removed.
       requestBody:
         required: true
         content:
@@ -283,7 +292,7 @@ components:
           items: {$ref: "#/components/schemas/FieldIssue"}
     LoadConfig:
       type: object
-      required: [publisherName, mode, deactivated, patterns, destination, bqParams, mappings]
+      required: [publisherName, mode, patterns, destination, organization, bqParams, mappings]
       properties:
         id: {type: string}
         createTime: {type: string, format: date-time, readOnly: true}
@@ -298,8 +307,6 @@ components:
           description: Derived. Not stored.
         publisherName: {type: string}
         mode: {type: string, enum: [APPEND, INCREMENTAL, OVERWRITE]}
-        deactivated: {type: boolean}
-        incremental: {type: boolean}
         patterns: {$ref: "#/components/schemas/Patterns"}
         destination: {$ref: "#/components/schemas/Destination"}
         organization: {$ref: "#/components/schemas/Organization"}
@@ -322,10 +329,15 @@ components:
         tableId: {type: string}
     Organization:
       type: object
+      required: [type]
       properties:
         id: {type: string}
-        account: {type: string}
-        type: {type: string}
+        account: {type: string, nullable: true}
+        type:
+          type: string
+          description: |
+            Writes accept `advertiser` or `publisher`. Reads also return
+            `referential` when a stored document has it.
     Notification:
       type: object
       properties:
@@ -336,10 +348,13 @@ components:
       required: [skipLeadingRows, sourceFormat]
       properties:
         fieldDelimiter: {type: string}
-        skipLeadingRows: {type: integer}
-        nullMarker: {type: string}
+        skipLeadingRows: {type: integer, format: int64}
+        nullMarker: {type: string, nullable: true}
         quote: {type: string}
-        sourceFormat: {type: string, enum: [CSV, NEWLINE_DELIMITED_JSON]}
+        sourceFormat:
+          type: integer
+          enum: [0, 1]
+          description: 0 is CSV. 1 is JSON. Firestore stores this integer.
     Mapping:
       type: object
       required: [src, type]
@@ -349,9 +364,10 @@ components:
           type: integer
           minimum: 0
           maximum: 6
-          description: Working table. See Meta.mappingTypes. Unverified against dmc-domain.
+          description: |
+            Domain mapping type. 0 RENAME, 1 SQL, 2 PREFIX_PATTERN, 3 CUSTOM,
+            4 EXTRA_FIELDS, 5 MISSING_MAPPINGS, 6 ARRAY.
         primaryKey: {type: boolean}
-        isPartitionKey: {type: boolean}
         useInDeleteFilter: {type: boolean}
         isRequiredPartitionFilter: {type: boolean}
     Template:
@@ -385,14 +401,18 @@ components:
           type: array
           items:
             type: object
-            required: [value, label, bqType]
+            required: [value, label]
             properties:
               value: {type: integer}
               label: {type: string}
-              bqType: {type: string}
         sourceFormats:
           type: array
-          items: {type: string}
+          items:
+            type: object
+            required: [value, label]
+            properties:
+              value: {type: integer, enum: [0, 1]}
+              label: {type: string, enum: [CSV, JSON]}
         partnerTypes:
           type: array
           items: {type: string}

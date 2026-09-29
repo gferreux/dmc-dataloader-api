@@ -52,18 +52,15 @@ func TestValidationWarnings(t *testing.T) {
 	second := validSales("other:demo:sales")
 	second.Patterns.Ingest = `^bucket/acme/sales/.*\.csv$`
 	second.Patterns.Preprocess = "bucket/file.tar.gz"
-	second.Mode = model.ModeOverwrite
-	second.Incremental = model.BoolPtr(true)
+	second.Mode = model.ModeIncremental
 	second.BQParams.FieldDelimiter = `\t`
-	stringType := model.MappingTypeString
-	second.Mappings["order_id"] = model.Mapping{Src: `CONCAT("xxx","xxx")`, Type: &stringType}
+	second.Mappings["order_id"] = model.Mapping{Src: `CONCAT("xxx","xxx")`, Type: model.MappingTypeSQL}
 
 	report, err := uc.Validate(ctx, second)
 	require.NoError(t, err)
 	assert.Empty(t, report.Errors)
 	assertWarning(t, report, "patterns")
 	assertWarning(t, report, "patterns.preprocess")
-	assertWarning(t, report, "incremental")
 	assertWarning(t, report, "mappings")
 	assertWarning(t, report, "mappings.order_id.src")
 	assertWarning(t, report, "bqParams.fieldDelimiter")
@@ -85,21 +82,6 @@ func TestValidationDoesNotWarnForAnchoredDistinctPatterns(t *testing.T) {
 	assert.Empty(t, report.Warnings)
 }
 
-func TestDeactivatedConfigIsExcludedFromOverlap(t *testing.T) {
-	t.Parallel()
-
-	uc, _ := newUsecase()
-	ctx := context.Background()
-	inactive := validSales("acme:demo:sales")
-	inactive.Deactivated = true
-	_, err := uc.Create(ctx, inactive)
-	require.NoError(t, err)
-
-	report, err := uc.Validate(ctx, validSales("other:demo:sales"))
-	require.NoError(t, err)
-	assert.Empty(t, report.Warnings)
-}
-
 func TestListFiltersAndTestPatternOrder(t *testing.T) {
 	t.Parallel()
 
@@ -112,13 +94,13 @@ func TestListFiltersAndTestPatternOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	earlier := validSales("a:demo:sales")
-	earlier.Deactivated = true
 	earlier.Patterns.Ingest = `^bucket/shared/.*\.csv$`
 	_, err = uc.Create(ctx, earlier)
 	require.NoError(t, err)
 
 	publisher := validSales("acme:demo:optin")
 	publisher.PublisherName = "Acme Publisher"
+	publisher.Organization.Type = model.OrganizationTypePublisher
 	publisher.Destination.DatasetID = "dkp_dmc_publishers_raw_eu_dev"
 	publisher.Destination.TableID = "profiles"
 	publisher.Patterns.Ingest = `^bucket/acme/optin/.*\.csv$`
@@ -127,26 +109,57 @@ func TestListFiltersAndTestPatternOrder(t *testing.T) {
 
 	active, err := uc.List(ctx, model.ListFilter{})
 	require.NoError(t, err)
-	require.Len(t, active, 2)
+	require.Len(t, active, 3)
 
 	salesOnly, err := uc.List(ctx, model.ListFilter{ImportType: model.ImportSales})
 	require.NoError(t, err)
-	require.Len(t, salesOnly, 1)
-	assert.Equal(t, "b:demo:sales", salesOnly[0].ID)
+	require.Len(t, salesOnly, 2)
+	assert.Equal(t, "a:demo:sales", salesOnly[0].ID)
 
 	queried, err := uc.List(ctx, model.ListFilter{Query: "publisher"})
 	require.NoError(t, err)
 	require.Len(t, queried, 1)
 
-	withInactive, err := uc.List(ctx, model.ListFilter{IncludeDeactivated: true, ImportType: model.ImportSales})
-	require.NoError(t, err)
-	assert.Len(t, withInactive, 2)
-
 	result, err := uc.TestPattern(ctx, `^bucket/shared/file\.csv$`, "bucket/shared/file.csv")
 	require.NoError(t, err)
 	assert.True(t, result.Matches)
 	require.NotNil(t, result.MatchingConfigID)
-	assert.Equal(t, "b:demo:sales", *result.MatchingConfigID)
+	assert.Equal(t, "a:demo:sales", *result.MatchingConfigID)
+}
+
+func TestReferentialTypeIsReadableAndRejectedOnWrite(t *testing.T) {
+	t.Parallel()
+
+	uc, repo := newUsecase()
+	ctx := context.Background()
+	stored := validSales("acme:referential:robinson")
+	stored.Organization.Type = "referential"
+	stored.Destination.DatasetID = "dmc_raw_referentials_eu_dev"
+	stored.Destination.TableID = "fr_robinson"
+	_, err := repo.Create(ctx, stored)
+	require.NoError(t, err)
+
+	got, err := uc.Get(ctx, stored.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.OrganizationType("referential"), got.Organization.Type)
+
+	listed, err := uc.List(ctx, model.ListFilter{})
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, model.OrganizationType("referential"), listed[0].Organization.Type)
+
+	_, err = uc.Update(ctx, stored.ID, stored)
+	var validation *model.ValidationError
+	require.ErrorAs(t, err, &validation)
+	assert.Contains(t, issueFields(validation.Issues), "organization.type")
+
+	_, err = uc.Create(ctx, validSales("other:demo:sales"))
+	require.NoError(t, err)
+	rejected := validSales("other:referential:sales")
+	rejected.Organization.Type = "referential"
+	_, err = uc.Create(ctx, rejected)
+	require.ErrorAs(t, err, &validation)
+	assert.Contains(t, issueFields(validation.Issues), "organization.type")
 }
 
 func TestUpdateAndDelete(t *testing.T) {
@@ -215,15 +228,25 @@ func validSales(id string) model.LoadConfig {
 			DatasetID: "dkp_dmc_advertisers_raw_eu_dev",
 			TableID:   "sales",
 		},
+		Organization: model.Organization{Type: model.OrganizationTypeAdvertiser},
 		BQParams: model.BQParams{
 			FieldDelimiter:  ",",
 			SkipLeadingRows: 1,
 			SourceFormat:    model.SourceFormatCSV,
 		},
 		Mappings: map[string]model.Mapping{
-			"order_id": {Src: "order_id", Type: model.MappingTypePtr(model.MappingTypeString)},
+			"order_id": {Src: "order_id", Type: model.MappingTypeRename},
 		},
 	}
+}
+
+func issueFields(issues []model.FieldIssue) []string {
+	fields := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		fields = append(fields, issue.Field)
+	}
+
+	return fields
 }
 
 func assertWarning(t *testing.T, report model.ValidationReport, field string) {

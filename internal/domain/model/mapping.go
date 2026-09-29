@@ -1,6 +1,6 @@
 package model
 
-// BigQuery type names used by templates and the mapping-type table.
+// BigQuery type names used by CSV templates. They are not mapping-type values.
 const (
 	BQString    = "STRING"
 	BQInteger   = "INTEGER"
@@ -11,75 +11,53 @@ const (
 	BQJSON      = "JSON"
 )
 
-// MappingType is the integer stored on mappings.<column>.type.
-//
-// These values could not be read from github.com/dekuple-labs/dmc-domain in this
-// environment. They are an explicit working table, not a dump of the loader enum:
-// the seven integers cover the column kinds the import templates actually use.
-// Confirm the order against dmodel before production writes.
+// Mapping types are the iota in
+// dekuple-labs/dmc-domain/pkg/model/data_loader_config.go.
+// 7 is ND (undefined) and is not a valid stored value.
 const (
-	MappingTypeString    MappingType = 0
-	MappingTypeInteger   MappingType = 1
-	MappingTypeFloat     MappingType = 2
-	MappingTypeBoolean   MappingType = 3
-	MappingTypeTimestamp MappingType = 4
-	MappingTypeDate      MappingType = 5
-	MappingTypeJSON      MappingType = 6
+	MappingTypeRename          MappingType = 0
+	MappingTypeSQL             MappingType = 1
+	MappingTypePrefixPattern   MappingType = 2
+	MappingTypeCustom          MappingType = 3
+	MappingTypeExtraFields     MappingType = 4
+	MappingTypeMissingMappings MappingType = 5
+	MappingTypeArray           MappingType = 6
 )
 
-// MappingType is the Firestore integer discriminator for a mapped column.
+// MappingType is the Firestore integer stored on mappings.<column>.type.
 type MappingType int
 
 // MappingTypeInfo is one entry of GET /api/v1/meta mappingTypes.
 type MappingTypeInfo struct {
-	Value  MappingType `json:"value"`
-	Label  string      `json:"label"`
-	BQType string      `json:"bqType"`
+	Value MappingType `json:"value"`
+	Label string      `json:"label"`
 }
 
-// MappingTypes returns the working 0-6 table in order.
+// MappingTypes returns the domain mapping types in iota order.
 func MappingTypes() []MappingTypeInfo {
 	return []MappingTypeInfo{
-		{Value: MappingTypeString, Label: BQString, BQType: BQString},
-		{Value: MappingTypeInteger, Label: BQInteger, BQType: BQInteger},
-		{Value: MappingTypeFloat, Label: BQFloat, BQType: BQFloat},
-		{Value: MappingTypeBoolean, Label: BQBoolean, BQType: BQBoolean},
-		{Value: MappingTypeTimestamp, Label: BQTimestamp, BQType: BQTimestamp},
-		{Value: MappingTypeDate, Label: BQDate, BQType: BQDate},
-		{Value: MappingTypeJSON, Label: BQJSON, BQType: BQJSON},
+		{Value: MappingTypeRename, Label: "RENAME"},
+		{Value: MappingTypeSQL, Label: "SQL"},
+		{Value: MappingTypePrefixPattern, Label: "PREFIX_PATTERN"},
+		{Value: MappingTypeCustom, Label: "CUSTOM"},
+		{Value: MappingTypeExtraFields, Label: "EXTRA_FIELDS"},
+		{Value: MappingTypeMissingMappings, Label: "MISSING_MAPPINGS"},
+		{Value: MappingTypeArray, Label: "ARRAY"},
 	}
 }
 
-// Valid reports whether the integer is one of the known mapping types.
+// Valid reports whether the integer is one of 0 through 6.
 func (t MappingType) Valid() bool {
-	return t.BQType() != ""
+	return t.Label() != ""
 }
 
-// BQType returns the BigQuery type name for a known mapping type.
-func (t MappingType) BQType() string {
+// Label returns the domain name for a known mapping type.
+func (t MappingType) Label() string {
 	for _, info := range MappingTypes() {
 		if info.Value == t {
-			return info.BQType
+			return info.Label
 		}
 	}
 
 	return ""
-}
-
-// MappingTypeFromBQ maps a BigQuery type name onto the working integer table.
-func MappingTypeFromBQ(bqType string) (MappingType, bool) {
-	for _, info := range MappingTypes() {
-		if info.BQType == bqType {
-			return info.Value, true
-		}
-	}
-
-	return 0, false
-}
-
-// MappingTypePtr returns a pointer to a copy of t.
-func MappingTypePtr(t MappingType) *MappingType {
-	copied := t
-
-	return &copied
 }
