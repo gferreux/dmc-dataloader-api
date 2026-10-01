@@ -10,8 +10,10 @@ import (
 	"context"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/auth"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/firestore"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/sftpgo"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app"
 	loadconfig2 "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/sftpaccount"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/usecase/loadconfig"
 )
@@ -33,13 +35,15 @@ func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, fu
 	logger := loadconfig.ProvideLogger()
 	loadConfigUsecase := loadconfig.NewUsecase(repository, directory, deriveConfig, logger)
 	handler := loadconfig2.NewHandler(loadConfigUsecase)
+	service := sftpgo.ProvideService(appConfig, logger)
+	sftpaccountHandler := sftpaccount.NewHandler(service)
 	authenticator, err := auth.NewAuthenticator(appConfig)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	appApp := app.New(appConfig, handler, authenticator)
+	appApp := app.New(appConfig, handler, sftpaccountHandler, authenticator)
 	return appApp, func() {
 		cleanup2()
 		cleanup()

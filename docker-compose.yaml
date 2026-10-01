@@ -31,6 +31,10 @@ services:
       DMC_AUTH_MODE: none
       DMC_SERVER_CORS_ORIGINS: http://localhost:4200
       DMC_LOG_JSON: "false"
+      # SFTPGO_API_KEY is a secret. Export it in the shell; do not commit it.
+      SFTPGO_URL: ${SFTPGO_URL:-}
+      SFTPGO_API_KEY: ${SFTPGO_API_KEY:-}
+      DMC_SFTPGO_HOME_ROOT: ${DMC_SFTPGO_HOME_ROOT:-/srv/sftpgo/data}
     volumes:
       - ./config-debug.yaml:/app/config.yaml:ro
     depends_on:

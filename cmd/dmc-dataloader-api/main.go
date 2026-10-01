@@ -69,6 +69,10 @@ func run() error {
 		"organizations", appConfig.Organizations.Collection,
 		"accounts", appConfig.Organizations.AccountsCollection,
 	)
+	slog.Info("SFTPGo",
+		"configured", appConfig.SFTPGo.Configured(),
+		"homeRoot", appConfig.SFTPGo.HomeRoot,
+	)
 
 	return application.Run(context.Background())
 }
@@ -95,6 +99,7 @@ func setDefaults(viperConfig *viper.Viper) {
 	setDeriveDefaults(viperConfig, "derive.publisher", derive.Publisher)
 	viperConfig.SetDefault("auth.mode", "none")
 	viperConfig.SetDefault("auth.iap_audience", "")
+	viperConfig.SetDefault("sftpgo.home_root", model.DefaultSFTPHomeRoot)
 }
 
 func setDeriveDefaults(viperConfig *viper.Viper, prefix string, partner model.PartnerDeriveConfig) {
@@ -122,6 +127,10 @@ func loadConfig(path string) (model.AppConfig, error) {
 		if err := viperConfig.BindEnv(key); err != nil {
 			return model.AppConfig{}, fmt.Errorf("binding env %s: %w", key, err)
 		}
+	}
+
+	if err := bindSFTPGoEnv(viperConfig); err != nil {
+		return model.AppConfig{}, err
 	}
 
 	if err := viperConfig.ReadInConfig(); err != nil {
@@ -187,7 +196,22 @@ func configEnvKeys() []string {
 		"derive.publisher.destination.tables.optout",
 		"auth.mode",
 		"auth.iap_audience",
+		"sftpgo.home_root",
 	}
+}
+
+// bindSFTPGoEnv reads the API key and URL from the names the SFTPGo script used.
+// They are not DMC_-prefixed. The key must never be logged.
+func bindSFTPGoEnv(viperConfig *viper.Viper) error {
+	if err := viperConfig.BindEnv("sftpgo.url", "SFTPGO_URL"); err != nil {
+		return fmt.Errorf("binding env SFTPGO_URL: %w", err)
+	}
+
+	if err := viperConfig.BindEnv("sftpgo.api_key", "SFTPGO_API_KEY"); err != nil {
+		return fmt.Errorf("binding env SFTPGO_API_KEY: %w", err)
+	}
+
+	return nil
 }
 
 func setupLogger(cfg model.LogConfig) {

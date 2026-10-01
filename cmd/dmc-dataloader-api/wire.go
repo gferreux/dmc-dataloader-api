@@ -10,8 +10,10 @@ import (
 
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/auth"
 	firestoreadapter "github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/firestore"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/sftpgo"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app"
 	loadconfighandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
+	sftphandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/sftpaccount"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/port"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/usecase/loadconfig"
@@ -29,6 +31,9 @@ func InitializeApp(ctx context.Context, appConfig model.AppConfig) (*app.App, fu
 		loadconfig.ProvideSettings,
 		loadconfig.NewUsecase,
 		loadconfighandler.NewHandler,
+		sftpgo.ProvideService,
+		wire.Bind(new(port.SFTPAccounts), new(*sftpgo.Service)),
+		sftphandler.NewHandler,
 		app.New,
 	)
 

@@ -44,6 +44,12 @@ steps:
   # until the mapping-type integers are confirmed against dmc-domain.
   # Derived buckets and the organization source use DMC_DERIVE_* and
   # DMC_ORGANIZATIONS_* (see README). Set them per environment before enabling deploy.
+  # SFTP routes need SFTPGO_URL and SFTPGO_API_KEY. Put the API key in Secret Manager
+  # and mount it as an env var. Do not bake it into the image or the config file:
+  #   --update-secrets=SFTPGO_API_KEY=<secret-name>:latest
+  #   --update-env-vars=SFTPGO_URL=https://<sftpgo-host>
+  # Optional: DMC_SFTPGO_HOME_ROOT (default /srv/sftpgo/data).
+  # Raw buckets are DMC_DERIVE_PUBLISHER_RAW_BUCKET and DMC_DERIVE_ADVERTISER_RAW_BUCKET.
   # - id: "deploy-service"
   #   waitFor: ["push-image"]
   #   name: "gcr.io/google.com/cloudsdktool/cloud-sdk"

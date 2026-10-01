@@ -47,3 +47,10 @@ derive:
 auth:
   mode: none
   iap_audience: ""
+
+sftpgo:
+  # Server root, without /api/v2. Leave empty to keep the SFTP routes disabled.
+  # The API key is the SFTPGO_API_KEY environment variable. On Cloud Run it comes
+  # from Secret Manager. Do not put it in this file.
+  url: ""
+  home_root: /srv/sftpgo/data

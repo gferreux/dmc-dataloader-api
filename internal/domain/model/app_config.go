@@ -14,6 +14,7 @@ type AppConfig struct {
 	Organizations OrganizationSourceConfig `mapstructure:"organizations" validate:"required"`
 	Derive        DeriveConfig             `mapstructure:"derive"        validate:"required"`
 	Auth          AuthConfig               `mapstructure:"auth"          validate:"required"`
+	SFTPGo        SFTPGoConfig             `mapstructure:"sftpgo"`
 }
 
 // LogConfig controls slog output.

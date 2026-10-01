@@ -13,6 +13,8 @@ var (
 	ErrDirectoryUnavailable = errors.New("organization directory unavailable")
 	// ErrEmptySlug is returned when slug normalization removes every character.
 	ErrEmptySlug = errors.New("empty slug")
+	// ErrSFTPGoUnconfigured is returned when SFTPGO_URL or SFTPGO_API_KEY is missing.
+	ErrSFTPGoUnconfigured = errors.New("sftpgo is not configured")
 )
 
 // FieldIssue is one validation error or warning attached to a field path.
