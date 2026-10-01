@@ -14,7 +14,7 @@ cmd/dmc-dataloader-api/
 
 internal/
   app/            — HTTP server, middleware, handlers
-  adapter/        — Firestore, in-memory repository, authenticators
+  adapter/        — Firestore, in-memory repository, authenticators, SFTPGo
   domain/
     model/        — LoadConfig and configuration structs
     port/         — usecase and repository interfaces
@@ -58,6 +58,8 @@ docker compose up --build
 
 The API listens on `:3000` unless `PORT` is set (Cloud Run) or `DMC_SERVER_ADDR` is set.
 
+SFTP account routes stay disabled until `SFTPGO_URL` and `SFTPGO_API_KEY` are set. Export them in the shell before `docker compose up` when you want to call a local SFTPGo. Do not put the API key in `config-debug.yaml`.
+
 ```bash
 go test ./...
 golangci-lint run
@@ -77,6 +79,9 @@ All config keys use the `DMC_` prefix, with `.` replaced by `_`. A missing confi
 | `DMC_SERVER_CORS_ORIGINS` | empty (comma-separated list, or `*`) |
 | `DMC_AUTH_MODE` | `none` |
 | `DMC_AUTH_IAP_AUDIENCE` | empty |
+| `SFTPGO_URL` | empty (SFTP routes other than config return 503) |
+| `SFTPGO_API_KEY` | empty (Secret Manager on Cloud Run; never logged) |
+| `DMC_SFTPGO_HOME_ROOT` | `/srv/sftpgo/data` |
 | `DMC_LOG_LEVEL` | `info` |
 | `DMC_LOG_JSON` | `true` when no config file is present |
 | `DMC_ORGANIZATIONS_PROJECT_ID` | `dmc-datastores-dev-becb` |
@@ -99,6 +104,18 @@ All config keys use the `DMC_` prefix, with `.` replaced by `_`. A missing confi
 | `DMC_DERIVE_PUBLISHER_DESTINATION_TABLES_OPTOUT` | `optout` |
 
 Cloud Run sits behind Google IAP. Set `DMC_AUTH_MODE=iap` and `DMC_AUTH_IAP_AUDIENCE` to the IAP backend audience (`/projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID`). The API verifies `X-Goog-IAP-JWT-Assertion` and logs that token's email on create, update, and delete. `DMC_AUTH_MODE=none` disables the check for local development. There is no second auth layer.
+
+## SFTP accounts
+
+The console can create SFTPGo users for a publisher or advertiser client. This is the Go replacement for `create_sftp_client.py`. `referential` is not supported.
+
+`GET /sftp-accounts/config` tells the console whether SFTPGo is configured and which sub-folders and raw buckets apply. It returns 200 with `configured: false` when the SFTPGo env vars are missing. Publisher accounts get `optin`, `optout`, and `stop`. Advertiser accounts get `blacklists`, `customers`, `stores`, and `sales`. Each sub-folder is an SFTPGo virtual folder on that kind's raw bucket, the same buckets derive uses (`DMC_DERIVE_PUBLISHER_RAW_BUCKET`, `DMC_DERIVE_ADVERTISER_RAW_BUCKET`).
+
+`SFTPGO_URL` is the SFTPGo server root, without an `/api/v2` suffix. `SFTPGO_API_KEY` is sent as `X-SFTPGO-API-KEY`. On Cloud Run the key belongs in Secret Manager and is mounted as the `SFTPGO_API_KEY` environment variable (`gcloud run services update --update-secrets=SFTPGO_API_KEY=<secret-name>:latest`). It is never written to logs. If either variable is missing, the process still starts and the other SFTP routes return 503. The rest of the API is unaffected.
+
+`DMC_SFTPGO_HOME_ROOT` is the home directory prefix (default `/srv/sftpgo/data`). A new user's home is `<root>/<user>`.
+
+`POST /sftp-accounts/preview` is a dry run. `POST /sftp-accounts` creates or extends the account. Password mode `generate` (the default) returns a 24-character password once in `generatedPassword`. Mode `none` requires `publicKeys`. An existing user's password is left unchanged. The audit log records the IAP email, the same way load_config create, update, and delete do.
 
 ## Derived identity
 

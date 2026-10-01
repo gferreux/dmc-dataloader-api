@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	loadconfighandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
+	sftphandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/sftpaccount"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/httpx"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app/middleware"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
@@ -20,14 +21,21 @@ import (
 type App struct {
 	appConfig model.AppConfig
 	handler   *loadconfighandler.Handler
+	sftp      *sftphandler.Handler
 	authn     port.Authenticator
 }
 
 // New builds the application.
-func New(appConfig model.AppConfig, handler *loadconfighandler.Handler, authn port.Authenticator) *App {
+func New(
+	appConfig model.AppConfig,
+	handler *loadconfighandler.Handler,
+	sftp *sftphandler.Handler,
+	authn port.Authenticator,
+) *App {
 	return &App{
 		appConfig: appConfig,
 		handler:   handler,
+		sftp:      sftp,
 		authn:     authn,
 	}
 }
@@ -48,6 +56,10 @@ func (a *App) HTTPHandler() http.Handler {
 	api.HandleFunc("GET /api/v1/organizations/{slug}/bases", a.handler.ListBases)
 	api.HandleFunc("GET /api/v1/templates", a.handler.Templates)
 	api.HandleFunc("GET /api/v1/meta", a.handler.Meta)
+	api.HandleFunc("GET /sftp-accounts/config", a.sftp.Config)
+	api.HandleFunc("GET /sftp-accounts/{username}", a.sftp.Get)
+	api.HandleFunc("POST /sftp-accounts/preview", a.sftp.Preview)
+	api.HandleFunc("POST /sftp-accounts", a.sftp.Create)
 	api.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "route not found", nil)
 	})

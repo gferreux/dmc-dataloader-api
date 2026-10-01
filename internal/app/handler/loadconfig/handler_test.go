@@ -15,12 +15,26 @@ import (
 
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/auth"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/memory"
+	"github.com/dekuple-labs/dmc-dataloader-api/internal/adapter/sftpgo"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/app"
 	loadhandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/loadconfig"
+	sftphandler "github.com/dekuple-labs/dmc-dataloader-api/internal/app/handler/sftpaccount"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/model"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/port"
 	"github.com/dekuple-labs/dmc-dataloader-api/internal/domain/usecase/loadconfig"
 )
+
+func TestSFTPRoutesRequireAuthAndLeaveHealthOpen(t *testing.T) {
+	t.Parallel()
+
+	handler := newAPI(denyAuth{})
+	response := perform(http.MethodGet, "/sftp-accounts/config", nil, handler)
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+
+	health := perform(http.MethodGet, "/healthz", nil, handler)
+	assert.Equal(t, http.StatusOK, health.Code)
+	assert.Equal(t, "OK", health.Body.String())
+}
 
 func TestHealthzDoesNotRequireAuth(t *testing.T) {
 	t.Parallel()
@@ -313,10 +327,15 @@ func newStack(authn port.Authenticator) (http.Handler, *memory.Repository, *memo
 	directory.AddOrganization("org-ciblexo", "Ciblexo", model.PartnerPublisher)
 	usecase := loadconfig.NewUsecase(repo, directory, model.DevDeriveConfig(), slog.Default())
 	handler := loadhandler.NewHandler(usecase)
+	derive := model.DevDeriveConfig()
+	sftpHandler := sftphandler.NewHandler(sftpgo.NewService(sftpgo.Config{
+		PublisherBucket:  derive.Publisher.RawBucket,
+		AdvertiserBucket: derive.Advertiser.RawBucket,
+	}, slog.Default()))
 
 	httpHandler := app.New(model.AppConfig{
 		Server: model.ServerConfig{CORSOrigins: "http://localhost:4200"},
-	}, handler, authn).HTTPHandler()
+	}, handler, sftpHandler, authn).HTTPHandler()
 
 	return httpHandler, repo, directory
 }

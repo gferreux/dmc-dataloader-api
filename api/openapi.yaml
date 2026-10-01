@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: dmc-dataloader-api
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Console API for dmc-data-loader `load_config` documents.
 
@@ -31,6 +31,12 @@ info:
     `bqParams.nullMarker` are nullable. `organization.type` values other than
     `advertiser` and `publisher` (including `referential`) can be read and are
     rejected when an update keeps that stored type. Create sets the type from `kind`.
+
+    SFTP account routes provision SFTPGo users for a publisher or advertiser
+    client. `referential` is not supported. `GET /sftp-accounts/config` reports
+    whether `SFTPGO_URL` and `SFTPGO_API_KEY` are set. The other SFTP routes
+    return 503 when they are not. A generated password is returned once and is
+    not logged.
 servers:
   - url: /
 tags:
@@ -39,6 +45,7 @@ tags:
   - name: templates
   - name: organizations
   - name: meta
+  - name: sftp-accounts
 paths:
   /healthz:
     get:
@@ -321,6 +328,100 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Meta"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+  /sftp-accounts/config:
+    get:
+      tags: [sftp-accounts]
+      summary: SFTP account form configuration
+      description: |
+        Returns 200 even when SFTPGo is not configured, with `configured: false`.
+        The other SFTP routes return 503 in that case. Raw buckets are the derive
+        raw buckets (`DMC_DERIVE_PUBLISHER_RAW_BUCKET` and
+        `DMC_DERIVE_ADVERTISER_RAW_BUCKET`).
+      responses:
+        "200":
+          description: Form metadata
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SFTPConfig"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /sftp-accounts/{username}:
+    get:
+      tags: [sftp-accounts]
+      summary: Read one SFTPGo user
+      description: |
+        Returns 200 with `exists: false` when SFTPGo has no such user.
+        `bases` are the first path segments of the user's virtual folders.
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: The user, or exists=false
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SFTPAccount"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "502": {$ref: "#/components/responses/BadGateway"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+  /sftp-accounts/preview:
+    post:
+      tags: [sftp-accounts]
+      summary: Dry-run an SFTP account change
+      description: |
+        Does not write. Bucket mismatches are 409 errors, not warnings.
+        `userAction` is `create`, `update`, or `unchanged`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SFTPAccountRequest"}
+      responses:
+        "200":
+          description: The plan
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SFTPPlan"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/BucketMismatch"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "502": {$ref: "#/components/responses/BadGateway"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+  /sftp-accounts:
+    post:
+      tags: [sftp-accounts]
+      summary: Create or extend an SFTPGo account
+      description: |
+        Creates the user when missing (201) or adds the base's virtual folders
+        to an existing user (200). An existing password is kept. `passwordMode`
+        `generate` (the default) returns `generatedPassword` once; it is not
+        stored or logged. `none` requires `publicKeys`. After writing, the user
+        is read back and `verified` reports whether every expected virtual path
+        is present.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SFTPAccountRequest"}
+      responses:
+        "200":
+          description: Existing user updated or already configured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SFTPApplyResult"}
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SFTPApplyResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/BucketMismatch"}
+        "422": {$ref: "#/components/responses/Validation"}
+        "502": {$ref: "#/components/responses/BadGateway"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
 components:
   parameters:
     id:
@@ -362,6 +463,21 @@ components:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
     Validation:
       description: Document failed validation
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    BucketMismatch:
+      description: The SFTPGo user or virtual folder is on a different GCS bucket
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    BadGateway:
+      description: SFTPGo returned an unexpected error. The message includes SFTPGo's trimmed body.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+    ServiceUnavailable:
+      description: SFTPGO_URL or SFTPGO_API_KEY is not set
       content:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorEnvelope"}
@@ -610,3 +726,132 @@ components:
           example:
             publisher: [optin, optout]
             advertiser: [blacklists, customers, stores, sales]
+    SFTPConfig:
+      type: object
+      required: [configured, clientTypes, buckets]
+      properties:
+        configured:
+          type: boolean
+          description: False when SFTPGO_URL or SFTPGO_API_KEY is unset.
+        clientTypes: {$ref: "#/components/schemas/SFTPClientTypes"}
+        buckets: {$ref: "#/components/schemas/SFTPBuckets"}
+    SFTPClientTypes:
+      type: object
+      required: [publisher, advertiser]
+      properties:
+        publisher:
+          type: array
+          items: {type: string}
+          example: [optin, optout, stop]
+        advertiser:
+          type: array
+          items: {type: string}
+          example: [blacklists, customers, stores, sales]
+    SFTPBuckets:
+      type: object
+      required: [publisher, advertiser]
+      properties:
+        publisher: {type: string, example: dkp-dmc-publishers-raw-euw1-dev}
+        advertiser: {type: string, example: dkp-dmc-advertisers-raw-euw1-dev}
+    SFTPAccount:
+      type: object
+      required: [username, exists, virtualFolders, bases]
+      properties:
+        username: {type: string}
+        exists: {type: boolean}
+        bucket:
+          type: string
+          description: GCS bucket of the user's filesystem. Omitted when the user does not exist.
+        virtualFolders:
+          type: array
+          items: {$ref: "#/components/schemas/SFTPVirtualFolder"}
+        bases:
+          type: array
+          items: {type: string}
+    SFTPVirtualFolder:
+      type: object
+      required: [name, virtualPath]
+      properties:
+        name: {type: string, example: acme/base_fr/optin}
+        virtualPath: {type: string, example: /base_fr/optin}
+    SFTPAccountRequest:
+      type: object
+      required: [user, base, clientType]
+      properties:
+        user:
+          type: string
+          description: SFTP username. Must match `^[a-z0-9][a-z0-9_-]*$`.
+        base:
+          type: string
+          description: Client base name. Same pattern as `user`.
+        clientType:
+          type: string
+          enum: [publisher, advertiser]
+        passwordMode:
+          type: string
+          enum: [generate, none]
+          default: generate
+        publicKeys:
+          type: array
+          items: {type: string}
+          description: Required when passwordMode is none. Applied only when the user is created.
+    SFTPPlan:
+      type: object
+      required: [user, base, clientType, bucket, subfolders, folders, userAction, warnings]
+      properties:
+        user: {type: string}
+        base: {type: string}
+        clientType: {type: string, enum: [publisher, advertiser]}
+        bucket: {type: string}
+        subfolders:
+          type: array
+          items: {type: string}
+        folders:
+          type: array
+          items: {$ref: "#/components/schemas/SFTPPlannedFolder"}
+        userAction:
+          type: string
+          enum: [create, update, unchanged]
+        warnings:
+          type: array
+          items: {type: string}
+          description: |
+            Notes that do not block the plan. An existing user includes
+            "existing password is kept". Public keys sent for an existing user
+            include "public keys are only applied when the user is created".
+    SFTPPlannedFolder:
+      type: object
+      required: [name, virtualPath, action]
+      properties:
+        name: {type: string}
+        virtualPath: {type: string}
+        action: {type: string, enum: [create, exists]}
+    SFTPApplyResult:
+      type: object
+      required: [user, base, clientType, bucket, subfolders, foldersCreated, foldersExisting, userAction, addedVirtualFolders, verified]
+      properties:
+        user: {type: string}
+        base: {type: string}
+        clientType: {type: string, enum: [publisher, advertiser]}
+        bucket: {type: string}
+        subfolders:
+          type: array
+          items: {type: string}
+        foldersCreated:
+          type: array
+          items: {type: string}
+        foldersExisting:
+          type: array
+          items: {type: string}
+        userAction:
+          type: string
+          enum: [created, updated, unchanged]
+        addedVirtualFolders: {type: integer}
+        generatedPassword:
+          type: string
+          description: Present only when a user was created with passwordMode generate. Returned once and never logged.
+        verified: {type: boolean}
+        missing:
+          type: array
+          items: {type: string}
+          description: Virtual paths missing after the write. Omitted when verification succeeds.

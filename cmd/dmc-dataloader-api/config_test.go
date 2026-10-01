@@ -67,6 +67,9 @@ func TestLoadConfigMissingFileUsesDefaults(t *testing.T) {
 		"DMC_ORGANIZATIONS_DATABASE_ID",
 		"DMC_ORGANIZATIONS_COLLECTION",
 		"DMC_ORGANIZATIONS_ACCOUNTS_COLLECTION",
+		"SFTPGO_URL",
+		"SFTPGO_API_KEY",
+		"DMC_SFTPGO_HOME_ROOT",
 	} {
 		t.Setenv(key, "placeholder")
 		require.NoError(t, os.Unsetenv(key))
@@ -81,6 +84,23 @@ func TestLoadConfigMissingFileUsesDefaults(t *testing.T) {
 	assert.Equal(t, "none", cfg.Auth.Mode)
 	assert.Equal(t, model.DevDeriveConfig(), cfg.Derive)
 	assert.Equal(t, model.DevOrganizationSource(), cfg.Organizations)
+	assert.False(t, cfg.SFTPGo.Configured())
+	assert.Empty(t, cfg.SFTPGo.URL)
+	assert.Empty(t, cfg.SFTPGo.APIKey)
+	assert.Equal(t, model.DefaultSFTPHomeRoot, cfg.SFTPGo.HomeRoot)
+}
+
+func TestLoadConfigSFTPGoEnv(t *testing.T) {
+	t.Setenv("SFTPGO_URL", "http://sftpgo.test")
+	t.Setenv("SFTPGO_API_KEY", "super-secret")
+	t.Setenv("DMC_SFTPGO_HOME_ROOT", "/data/sftp")
+
+	cfg, err := loadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, "http://sftpgo.test", cfg.SFTPGo.URL)
+	assert.Equal(t, "super-secret", cfg.SFTPGo.APIKey)
+	assert.Equal(t, "/data/sftp", cfg.SFTPGo.HomeRoot)
+	assert.True(t, cfg.SFTPGo.Configured())
 }
 
 func TestLoadConfigDeriveEnvOverrides(t *testing.T) {
