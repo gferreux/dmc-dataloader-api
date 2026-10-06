@@ -28,7 +28,7 @@ func TestSFTPRoutesRequireAuthAndLeaveHealthOpen(t *testing.T) {
 	t.Parallel()
 
 	handler := newAPI(denyAuth{})
-	response := perform(http.MethodGet, "/sftp-accounts/config", nil, handler)
+	response := perform(http.MethodGet, "/api/v1/sftp-accounts/config", nil, handler)
 	assert.Equal(t, http.StatusUnauthorized, response.Code)
 
 	health := perform(http.MethodGet, "/healthz", nil, handler)

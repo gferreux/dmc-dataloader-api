@@ -29,12 +29,12 @@ func NewHandler(accounts port.SFTPAccounts) *Handler {
 	return &Handler{accounts: accounts}
 }
 
-// Config handles GET /sftp-accounts/config.
+// Config handles GET /api/v1/sftp-accounts/config.
 func (h *Handler) Config(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, h.accounts.Config())
 }
 
-// Get handles GET /sftp-accounts/{username}.
+// Get handles GET /api/v1/sftp-accounts/{username}.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	view, err := h.accounts.Get(r.Context(), r.PathValue("username"))
 	if err != nil {
@@ -46,7 +46,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
-// Preview handles POST /sftp-accounts/preview.
+// Preview handles POST /api/v1/sftp-accounts/preview.
 func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	var req model.SFTPAccountRequest
 	if !decodeJSON(w, r, &req) {
@@ -63,7 +63,7 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, plan)
 }
 
-// Create handles POST /sftp-accounts.
+// Create handles POST /api/v1/sftp-accounts.
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req model.SFTPAccountRequest
 	if !decodeJSON(w, r, &req) {

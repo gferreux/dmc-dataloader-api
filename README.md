@@ -107,15 +107,15 @@ Cloud Run sits behind Google IAP. Set `DMC_AUTH_MODE=iap` and `DMC_AUTH_IAP_AUDI
 
 ## SFTP accounts
 
-The console can create SFTPGo users for a publisher or advertiser client. This is the Go replacement for `create_sftp_client.py`. `referential` is not supported.
+The console can create SFTPGo users for a publisher or advertiser client. Routes live under `/api/v1`, the same prefix as the rest of the API. This is the Go replacement for `create_sftp_client.py`. `referential` is not supported.
 
-`GET /sftp-accounts/config` tells the console whether SFTPGo is configured and which sub-folders and raw buckets apply. It returns 200 with `configured: false` when the SFTPGo env vars are missing. Publisher accounts get `optin`, `optout`, and `stop`. Advertiser accounts get `blacklists`, `customers`, `stores`, and `sales`. Each sub-folder is an SFTPGo virtual folder on that kind's raw bucket, the same buckets derive uses (`DMC_DERIVE_PUBLISHER_RAW_BUCKET`, `DMC_DERIVE_ADVERTISER_RAW_BUCKET`).
+`GET /api/v1/sftp-accounts/config` tells the console whether SFTPGo is configured and which sub-folders and raw buckets apply. It returns 200 with `configured: false` when the SFTPGo env vars are missing. Publisher accounts get `optin`, `optout`, and `stop`. Advertiser accounts get `blacklists`, `customers`, `stores`, and `sales`. Each sub-folder is an SFTPGo virtual folder on that kind's raw bucket, the same buckets derive uses (`DMC_DERIVE_PUBLISHER_RAW_BUCKET`, `DMC_DERIVE_ADVERTISER_RAW_BUCKET`).
 
 `SFTPGO_URL` is the SFTPGo server root, without an `/api/v2` suffix. `SFTPGO_API_KEY` is sent as `X-SFTPGO-API-KEY`. On Cloud Run the key belongs in Secret Manager and is mounted as the `SFTPGO_API_KEY` environment variable (`gcloud run services update --update-secrets=SFTPGO_API_KEY=<secret-name>:latest`). It is never written to logs. If either variable is missing, the process still starts and the other SFTP routes return 503. The rest of the API is unaffected.
 
 `DMC_SFTPGO_HOME_ROOT` is the home directory prefix (default `/srv/sftpgo/data`). A new user's home is `<root>/<user>`.
 
-`POST /sftp-accounts/preview` is a dry run. `POST /sftp-accounts` creates or extends the account. Password mode `generate` (the default) returns a 24-character password once in `generatedPassword`. Mode `none` requires `publicKeys`. An existing user's password is left unchanged. The audit log records the IAP email, the same way load_config create, update, and delete do.
+`POST /api/v1/sftp-accounts/preview` is a dry run. `POST /api/v1/sftp-accounts` creates or extends the account. Password mode `generate` (the default) returns a 24-character password once in `generatedPassword`. Mode `none` requires `publicKeys`. An existing user's password is left unchanged. The audit log records the IAP email, the same way load_config create, update, and delete do.
 
 ## Derived identity
 
