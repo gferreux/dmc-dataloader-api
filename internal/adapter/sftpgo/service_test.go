@@ -41,7 +41,7 @@ func TestCreateNewPublisherUser(t *testing.T) {
 
 	fx := newFixture(t, true, auth.Noop{})
 
-	missing := perform(http.MethodGet, "/sftp-accounts/no-such-user", nil, fx.api)
+	missing := perform(http.MethodGet, "/api/v1/sftp-accounts/no-such-user", nil, fx.api)
 	require.Equal(t, http.StatusOK, missing.Code, missing.Body.String())
 
 	var absent model.SFTPAccountView
@@ -52,7 +52,7 @@ func TestCreateNewPublisherUser(t *testing.T) {
 	assert.Empty(t, absent.Bases)
 	assert.NotContains(t, missing.Body.String(), `"bucket"`)
 
-	preview := perform(http.MethodPost, "/sftp-accounts/preview", publisherRequest("generate", nil), fx.api)
+	preview := perform(http.MethodPost, "/api/v1/sftp-accounts/preview", publisherRequest("generate", nil), fx.api)
 	require.Equal(t, http.StatusOK, preview.Code, preview.Body.String())
 
 	var plan model.SFTPPlan
@@ -67,7 +67,7 @@ func TestCreateNewPublisherUser(t *testing.T) {
 	assert.Equal(t, "/base_fr/optin", plan.Folders[0].VirtualPath)
 	assert.Zero(t, fx.fake.writeCount())
 
-	created := perform(http.MethodPost, "/sftp-accounts", publisherRequest("generate", nil), fx.api)
+	created := perform(http.MethodPost, "/api/v1/sftp-accounts", publisherRequest("generate", nil), fx.api)
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 
 	var result model.SFTPApplyResult
@@ -94,7 +94,7 @@ func TestCreateNewPublisherUser(t *testing.T) {
 	assert.Equal(t, "acme - base_fr - optin", folder["description"])
 	assertGCS(t, folder["filesystem"], publisherBucket, "acme/base_fr/optin/")
 
-	got := perform(http.MethodGet, "/sftp-accounts/acme", nil, fx.api)
+	got := perform(http.MethodGet, "/api/v1/sftp-accounts/acme", nil, fx.api)
 	require.Equal(t, http.StatusOK, got.Code, got.Body.String())
 
 	var view model.SFTPAccountView
@@ -111,7 +111,7 @@ func TestCreateWithPublicKeyAndNoPassword(t *testing.T) {
 
 	fx := newFixture(t, true, auth.Noop{})
 	body := publisherRequest(model.SFTPPasswordNone, []string{"  " + samplePublicKey + "  "})
-	created := perform(http.MethodPost, "/sftp-accounts", body, fx.api)
+	created := perform(http.MethodPost, "/api/v1/sftp-accounts", body, fx.api)
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 
 	var result model.SFTPApplyResult
@@ -139,7 +139,7 @@ func TestExistingUserGainsABase(t *testing.T) {
 		"passwordMode": "generate",
 		"publicKeys":   []string{samplePublicKey},
 	}
-	preview := perform(http.MethodPost, "/sftp-accounts/preview", body, fx.api)
+	preview := perform(http.MethodPost, "/api/v1/sftp-accounts/preview", body, fx.api)
 	require.Equal(t, http.StatusOK, preview.Code, preview.Body.String())
 
 	var plan model.SFTPPlan
@@ -150,7 +150,7 @@ func TestExistingUserGainsABase(t *testing.T) {
 	assert.Contains(t, plan.Warnings, keysIgnoredWarn)
 	assert.Zero(t, fx.fake.writeCount())
 
-	updated := perform(http.MethodPost, "/sftp-accounts", body, fx.api)
+	updated := perform(http.MethodPost, "/api/v1/sftp-accounts", body, fx.api)
 	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
 
 	var result model.SFTPApplyResult
@@ -178,7 +178,7 @@ func TestExistingUserGainsABase(t *testing.T) {
 	assertPermissionKeys(t, stored["permissions"], "/", "/acme_fr/blacklists", "/acme_uk/sales")
 	assertGCS(t, fx.fake.folder("acme/acme_uk/sales")["filesystem"], advertiserBucket, "acme/acme_uk/sales/")
 
-	view := perform(http.MethodGet, "/sftp-accounts/acme", nil, fx.api)
+	view := perform(http.MethodGet, "/api/v1/sftp-accounts/acme", nil, fx.api)
 	require.Equal(t, http.StatusOK, view.Code, view.Body.String())
 
 	var account model.SFTPAccountView
@@ -194,7 +194,7 @@ func TestRerunSameBaseIsUnchanged(t *testing.T) {
 
 	body := map[string]any{"user": "acme", "base": "acme_fr", "clientType": "advertiser"}
 	writesBefore := fx.fake.writeCount()
-	again := perform(http.MethodPost, "/sftp-accounts", body, fx.api)
+	again := perform(http.MethodPost, "/api/v1/sftp-accounts", body, fx.api)
 	require.Equal(t, http.StatusOK, again.Code, again.Body.String())
 
 	var result model.SFTPApplyResult
@@ -207,7 +207,7 @@ func TestRerunSameBaseIsUnchanged(t *testing.T) {
 	assert.Empty(t, result.GeneratedPassword)
 	assert.Equal(t, writesBefore, fx.fake.writeCount())
 
-	preview := perform(http.MethodPost, "/sftp-accounts/preview", body, fx.api)
+	preview := perform(http.MethodPost, "/api/v1/sftp-accounts/preview", body, fx.api)
 	require.Equal(t, http.StatusOK, preview.Code, preview.Body.String())
 
 	var plan model.SFTPPlan
@@ -224,7 +224,7 @@ func TestFolderBucketMismatch(t *testing.T) {
 	fx.fake.seedFolder("acme/acme_fr/blacklists", "other-bucket")
 
 	body := map[string]any{"user": "acme", "base": "acme_fr", "clientType": "advertiser"}
-	for _, path := range []string{"/sftp-accounts/preview", "/sftp-accounts"} {
+	for _, path := range []string{"/api/v1/sftp-accounts/preview", "/api/v1/sftp-accounts"} {
 		response := perform(http.MethodPost, path, body, fx.api)
 		require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 		assert.Equal(t, "bucket_mismatch", errorCode(t, response))
@@ -243,14 +243,14 @@ func TestUserBucketMismatch(t *testing.T) {
 	fx.fake.seedUserOnly("acme", "other-bucket")
 
 	body := map[string]any{"user": "acme", "base": "acme_fr", "clientType": "advertiser"}
-	response := perform(http.MethodPost, "/sftp-accounts", body, fx.api)
+	response := perform(http.MethodPost, "/api/v1/sftp-accounts", body, fx.api)
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	assert.Equal(t, "bucket_mismatch", errorCode(t, response))
 	assert.Contains(t, errorMessage(t, response), "user acme is on bucket other-bucket")
 	assert.Zero(t, fx.fake.writeCount())
 	assert.Nil(t, fx.fake.folder("acme/acme_fr/blacklists"))
 
-	preview := perform(http.MethodPost, "/sftp-accounts/preview", body, fx.api)
+	preview := perform(http.MethodPost, "/api/v1/sftp-accounts/preview", body, fx.api)
 	require.Equal(t, http.StatusConflict, preview.Code, preview.Body.String())
 	assert.Equal(t, "bucket_mismatch", errorCode(t, preview))
 }
@@ -265,14 +265,14 @@ func TestPasswordNoneWithoutKeys(t *testing.T) {
 		"clientType":   "publisher",
 		"passwordMode": "none",
 	}
-	response := perform(http.MethodPost, "/sftp-accounts", body, fx.api)
+	response := perform(http.MethodPost, "/api/v1/sftp-accounts", body, fx.api)
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	assert.Equal(t, "validation_error", errorCode(t, response))
 	assert.Contains(t, response.Body.String(), "passwordMode")
 	assert.Contains(t, response.Body.String(), "public key")
 	assert.Zero(t, fx.fake.callCount())
 
-	badName := perform(http.MethodPost, "/sftp-accounts/preview", map[string]any{
+	badName := perform(http.MethodPost, "/api/v1/sftp-accounts/preview", map[string]any{
 		"user":       "Acme",
 		"base":       "",
 		"clientType": "referential",
@@ -293,9 +293,9 @@ func TestUnconfiguredReturns503AndOtherRoutesWork(t *testing.T) {
 		path   string
 		body   any
 	}{
-		{http.MethodGet, "/sftp-accounts/acme", nil},
-		{http.MethodPost, "/sftp-accounts/preview", publisherRequest("generate", nil)},
-		{http.MethodPost, "/sftp-accounts", publisherRequest("generate", nil)},
+		{http.MethodGet, "/api/v1/sftp-accounts/acme", nil},
+		{http.MethodPost, "/api/v1/sftp-accounts/preview", publisherRequest("generate", nil)},
+		{http.MethodPost, "/api/v1/sftp-accounts", publisherRequest("generate", nil)},
 	} {
 		response := perform(tc.method, tc.path, tc.body, fx.api)
 		require.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
@@ -304,7 +304,7 @@ func TestUnconfiguredReturns503AndOtherRoutesWork(t *testing.T) {
 		assert.Contains(t, errorMessage(t, response), "SFTPGO_API_KEY")
 	}
 
-	config := perform(http.MethodGet, "/sftp-accounts/config", nil, fx.api)
+	config := perform(http.MethodGet, "/api/v1/sftp-accounts/config", nil, fx.api)
 	require.Equal(t, http.StatusOK, config.Code, config.Body.String())
 
 	var view model.SFTPConfigView
@@ -345,7 +345,7 @@ func TestPasswordAndAPIKeyAreAbsentFromLogs(t *testing.T) {
 	t.Parallel()
 
 	fx := newFixture(t, true, emailAuth{email: "ada@example.com"})
-	created := perform(http.MethodPost, "/sftp-accounts", publisherRequest("generate", nil), fx.api)
+	created := perform(http.MethodPost, "/api/v1/sftp-accounts", publisherRequest("generate", nil), fx.api)
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 
 	var result model.SFTPApplyResult
@@ -369,7 +369,7 @@ func TestUpstreamErrorIs502(t *testing.T) {
 	fx := newFixture(t, true, auth.Noop{})
 	fx.fake.fail(http.StatusInternalServerError, "  storage unavailable\n"+strings.Repeat("x", 20))
 
-	response := perform(http.MethodPost, "/sftp-accounts", publisherRequest("generate", nil), fx.api)
+	response := perform(http.MethodPost, "/api/v1/sftp-accounts", publisherRequest("generate", nil), fx.api)
 	require.Equal(t, http.StatusBadGateway, response.Code, response.Body.String())
 	assert.Equal(t, "sftpgo_error", errorCode(t, response))
 	assert.Contains(t, errorMessage(t, response), "storage unavailable")
@@ -381,11 +381,24 @@ func TestConfigRouteIsNotAUsernameLookup(t *testing.T) {
 	t.Parallel()
 
 	fx := newFixture(t, true, auth.Noop{})
-	response := perform(http.MethodGet, "/sftp-accounts/config", nil, fx.api)
+	response := perform(http.MethodGet, "/api/v1/sftp-accounts/config", nil, fx.api)
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Body.String(), `"configured":true`)
 	assert.Contains(t, response.Body.String(), `"clientTypes"`)
 	assert.NotContains(t, response.Body.String(), `"exists"`)
+}
+
+func TestSFTPConfigRouteUsesAPIPrefix(t *testing.T) {
+	t.Parallel()
+
+	fx := newFixture(t, true, auth.Noop{})
+	response := perform(http.MethodGet, "/api/v1/sftp-accounts/config", nil, fx.api)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"configured":true`)
+
+	legacy := perform(http.MethodGet, "/sftp-accounts/config", nil, fx.api)
+	assert.Equal(t, http.StatusNotFound, legacy.Code, legacy.Body.String())
+	assert.Equal(t, "not_found", errorCode(t, legacy))
 }
 
 func TestProvideServiceUsesDeriveBuckets(t *testing.T) {

@@ -58,7 +58,7 @@ type SFTPAccountRequest struct {
 	PublicKeys   []string `json:"publicKeys,omitempty"`
 }
 
-// SFTPConfigView is the body of GET /sftp-accounts/config.
+// SFTPConfigView is the body of GET /api/v1/sftp-accounts/config.
 type SFTPConfigView struct {
 	Configured  bool            `json:"configured"`
 	ClientTypes SFTPClientTypes `json:"clientTypes"`
@@ -77,7 +77,7 @@ type SFTPBuckets struct {
 	Advertiser string `json:"advertiser"`
 }
 
-// SFTPAccountView is the body of GET /sftp-accounts/{username}.
+// SFTPAccountView is the body of GET /api/v1/sftp-accounts/{username}.
 type SFTPAccountView struct {
 	Username       string              `json:"username"`
 	Exists         bool                `json:"exists"`
@@ -99,7 +99,7 @@ type SFTPPlannedFolder struct {
 	Action      string `json:"action"`
 }
 
-// SFTPPlan is the body of POST /sftp-accounts/preview.
+// SFTPPlan is the body of POST /api/v1/sftp-accounts/preview.
 type SFTPPlan struct {
 	User       string              `json:"user"`
 	Base       string              `json:"base"`
@@ -111,7 +111,7 @@ type SFTPPlan struct {
 	Warnings   []string            `json:"warnings"`
 }
 
-// SFTPApplyResult is the body of POST /sftp-accounts.
+// SFTPApplyResult is the body of POST /api/v1/sftp-accounts.
 // GeneratedPassword is returned once and must not be logged or stored.
 type SFTPApplyResult struct {
 	User                string   `json:"user"`

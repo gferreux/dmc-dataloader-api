@@ -33,7 +33,7 @@ info:
     rejected when an update keeps that stored type. Create sets the type from `kind`.
 
     SFTP account routes provision SFTPGo users for a publisher or advertiser
-    client. `referential` is not supported. `GET /sftp-accounts/config` reports
+    client. `referential` is not supported. `GET /api/v1/sftp-accounts/config` reports
     whether `SFTPGO_URL` and `SFTPGO_API_KEY` are set. The other SFTP routes
     return 503 when they are not. A generated password is returned once and is
     not logged.
@@ -328,7 +328,7 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Meta"}
         "401": {$ref: "#/components/responses/Unauthorized"}
-  /sftp-accounts/config:
+  /api/v1/sftp-accounts/config:
     get:
       tags: [sftp-accounts]
       summary: SFTP account form configuration
@@ -344,7 +344,7 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/SFTPConfig"}
         "401": {$ref: "#/components/responses/Unauthorized"}
-  /sftp-accounts/{username}:
+  /api/v1/sftp-accounts/{username}:
     get:
       tags: [sftp-accounts]
       summary: Read one SFTPGo user
@@ -365,7 +365,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "502": {$ref: "#/components/responses/BadGateway"}
         "503": {$ref: "#/components/responses/ServiceUnavailable"}
-  /sftp-accounts/preview:
+  /api/v1/sftp-accounts/preview:
     post:
       tags: [sftp-accounts]
       summary: Dry-run an SFTP account change
@@ -389,7 +389,7 @@ paths:
         "422": {$ref: "#/components/responses/Validation"}
         "502": {$ref: "#/components/responses/BadGateway"}
         "503": {$ref: "#/components/responses/ServiceUnavailable"}
-  /sftp-accounts:
+  /api/v1/sftp-accounts:
     post:
       tags: [sftp-accounts]
       summary: Create or extend an SFTPGo account
