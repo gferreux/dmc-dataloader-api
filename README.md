@@ -170,3 +170,57 @@ These are the domain iota values. `GET /api/v1/meta` returns the same rows. Temp
 `7` is ND and is rejected. `POST /api/v1/load-configs/validate` reports errors (required fields, bad regex, unknown mode or type, mapping without `src`, `organization.type` other than advertiser or publisher) and warnings (overlap with another config, unanchored regex, unescaped dots, `INCREMENTAL` without `primaryKey`, placeholder expressions such as `CONCAT("xxx","xxx")`, a delimiter stored as the two characters `\t`). Warnings do not block create or update. Overlap and test-pattern follow document id order, which is the loader's iteration order.
 
 Publisher opt-out and advertiser blacklists each use one required STRING column, `sha256_mobile_phone`. Create sets an advertiser's `destination.tableId` to the file type (`blacklists`, `customers`, `stores`, or `sales`).
+
+
+## Local Dev
+
+# Config (CORS)
+- `config-debug.yaml`:
+```
+server:
+  addr: :3001
+  read_timeout: 5s
+  write_timeout: 15s
+  shutdown_timeout: 10s
+  cors_origins: http://localhost:3002,https://3002-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
+
+```
+
+- `docker-compose.yaml`:
+```
+api:
+    ...
+    ports:
+      - "3001:3001"
+    environment:
+      FIRESTORE_EMULATOR_HOST: firestore:8080
+      DMC_FIRESTORE_PROJECT_ID: demo-dmc
+      DMC_FIRESTORE_DATABASE_ID: dmc-data-loader-dev
+      DMC_FIRESTORE_COLLECTION: load_config
+      DMC_ORGANIZATIONS_PROJECT_ID: demo-dmc
+      DMC_ORGANIZATIONS_DATABASE_ID: "(default)"
+      DMC_ORGANIZATIONS_COLLECTION: organizations
+      DMC_ORGANIZATIONS_ACCOUNTS_COLLECTION: accounts
+      DMC_AUTH_MODE: none
+      DMC_SERVER_CORS_ORIGINS: http://localhost:3002,https://3002-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
+      DMC_LOG_JSON: "false"
+```
+
+
+# Commands
+
+- SFTPGO:
+```
+PROJECT="dmc-public-io-dev-d7ae"
+INSTANCE=$(gcloud compute instances list --project "${PROJECT}" | tail -1 | awk '{print $1}')
+ZONE=$(gcloud compute instances list --project "${PROJECT}" | tail -1 | awk '{print $2}')
+gcloud compute ssh --zone "${ZONE}" "${INSTANCE}" --tunnel-through-iap --project "${PROJECT}" -- -NL 3003:localhost:8080
+```
+
+- API (+Firestore)
+```
+export SFTPGO_URL=localhost:3003
+export SFTPGO_API_KEY="LeQMhufsKzJtHhMXzdow6J.QXHwSVM3hLAfVDzPpwv3oe"
+docker build .
+docker compose up
+```

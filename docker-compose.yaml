@@ -18,7 +18,7 @@ services:
         appName: dmc-dataloader-api
         appVersion: dev
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       FIRESTORE_EMULATOR_HOST: firestore:8080
       DMC_FIRESTORE_PROJECT_ID: demo-dmc
@@ -29,7 +29,7 @@ services:
       DMC_ORGANIZATIONS_COLLECTION: organizations
       DMC_ORGANIZATIONS_ACCOUNTS_COLLECTION: accounts
       DMC_AUTH_MODE: none
-      DMC_SERVER_CORS_ORIGINS: http://localhost:4200
+      DMC_SERVER_CORS_ORIGINS: http://localhost:3002,https://3002-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
       DMC_LOG_JSON: "false"
       # SFTPGO_API_KEY is a secret. Export it in the shell; do not commit it.
       SFTPGO_URL: ${SFTPGO_URL:-}

@@ -8,7 +8,7 @@ server:
   read_timeout: 5s
   write_timeout: 15s
   shutdown_timeout: 10s
-  cors_origins: http://localhost:4200,https://4200-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
+  cors_origins: http://localhost:3002,https://3002-ws-gferreux.cluster-ut4kyuiqi5d5suqbh6cuvr2cbg.cloudworkstations.dev
 
 firestore:
   project_id: dmc-datastores-dev-becb
